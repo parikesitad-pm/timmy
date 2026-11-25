@@ -71,6 +71,7 @@ export const frontdeskTarget = (cfg: TimmyConfig): ProviderTarget => {
     kind,
     model: f.model,
     baseUrl: resolveBaseUrl(f.provider, pc?.base_url ?? f.base_url),
+    ...(kind === 'codex' ? { bypassPermissions: pc?.bypass_permissions } : {}),
   }
 }
 

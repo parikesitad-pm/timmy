@@ -1,6 +1,16 @@
-import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { once } from 'node:events'
 import { dirname } from 'node:path'
+import { setTimeout } from 'node:timers/promises'
 
 /**
  * Generic background-process supervision over a pidfile + logfile. Core has no process manager today
@@ -50,41 +60,79 @@ export type StartResult = { started: number } | { alreadyRunning: number }
  * Spawn `command args` as a **detached** background process: stdio redirected to the logfile (append),
  * pid recorded, parent free to exit (`unref`). No-op (returns `alreadyRunning`) if already up.
  */
-export const startBackground = (
+export const startBackground = async (
   paths: DaemonPaths,
   command: string,
   args: readonly string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): StartResult => {
-  const running = isRunning(paths)
-  if (running !== null) return { alreadyRunning: running }
-
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; ready?: (pid: number) => Promise<void> } = {},
+): Promise<StartResult> => {
   mkdirSync(dirname(paths.pidFile), { recursive: true })
-  const log = openSync(paths.logFile, 'a') // append so logs survive restarts
-  const child: ChildProcess = spawn(command, [...args], {
-    detached: true,
-    stdio: ['ignore', log, log],
-    cwd: opts.cwd,
-    env: opts.env ?? process.env,
-  })
-  const pid = child.pid
-  if (pid === undefined) throw new Error('failed to spawn daemon (no pid)')
-  writeFileSync(paths.pidFile, String(pid))
-  child.unref() // let the parent CLI process exit without waiting on the child
-  return { started: pid }
+  const lockFile = `${paths.pidFile}.lock`
+  const owner = readPid(lockFile)
+  if (owner !== null && !isAlive(owner)) rmSync(lockFile, { force: true })
+  const lock = openSync(lockFile, 'wx')
+  try {
+    writeFileSync(lock, String(process.pid))
+    const running = isRunning(paths)
+    if (running !== null) return { alreadyRunning: running }
+    const log = openSync(paths.logFile, 'a')
+    let child
+    try {
+      child = spawn(command, [...args], {
+        detached: true,
+        windowsHide: true,
+        stdio: ['ignore', log, log],
+        cwd: opts.cwd,
+        env: opts.env ?? process.env,
+      })
+    } finally {
+      closeSync(log)
+    }
+    await once(child, 'spawn')
+    const pid = child.pid
+    if (pid === undefined) throw new Error('Spawn completed without a process ID')
+    writeFileSync(paths.pidFile, String(pid))
+    child.unref()
+    try {
+      await opts.ready?.(pid)
+    } catch (error) {
+      if (isAlive(pid)) {
+        child.kill()
+        await waitForExit(pid)
+      }
+      if (readPid(paths.pidFile) === pid) rmSync(paths.pidFile, { force: true })
+      throw error
+    }
+    return { started: pid }
+  } finally {
+    closeSync(lock)
+    rmSync(lockFile, { force: true })
+  }
 }
 
 export type StopResult = { stopped: number } | { notRunning: true }
 
 /** Signal the running daemon (default SIGTERM) and remove the pidfile. */
-export const stop = (paths: DaemonPaths, signal: NodeJS.Signals = 'SIGTERM'): StopResult => {
+export async function waitForExit(pid: number, timeout = 5000): Promise<void> {
+  const deadline = Date.now() + timeout
+  while (isAlive(pid)) {
+    if (Date.now() >= deadline) throw new Error(`Process ${pid} did not exit within ${timeout}ms`)
+    await setTimeout(50)
+  }
+}
+
+export const stop = async (
+  paths: DaemonPaths,
+  signal: NodeJS.Signals = 'SIGTERM',
+): Promise<StopResult> => {
   const pid = isRunning(paths)
   if (pid === null) return { notRunning: true }
   try {
     process.kill(pid, signal)
-  } catch {
-    /* already gone between the check and the kill — treat as stopped */
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
   }
+  await waitForExit(pid)
   rmSync(paths.pidFile, { force: true })
   return { stopped: pid }
 }

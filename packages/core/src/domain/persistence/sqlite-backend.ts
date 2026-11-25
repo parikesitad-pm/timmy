@@ -17,6 +17,7 @@ interface RawStmt {
   all(...params: unknown[]): unknown[]
 }
 interface RawDb {
+  close(): void
   exec(sql: string): void
   prepare(sql: string): RawStmt
 }
@@ -24,6 +25,7 @@ interface RawDb {
 /** The normalized backend the {@link Db} service drives. Params are passed as an array (spread into
  *  the driver), results are plain rows, and `get` returns `undefined` (never `null`) when empty. */
 export interface SqliteDb {
+  close(): void
   exec(sql: string): void
   run(sql: string, params: readonly unknown[]): void
   get<T>(sql: string, params: readonly unknown[]): T | undefined
@@ -36,6 +38,7 @@ const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
 
 /** Wrap a raw driver handle (already opened + pragmas applied) in the normalized {@link SqliteDb}. */
 const wrapRaw = (db: RawDb): SqliteDb => ({
+  close: () => db.close(),
   exec: (sql) => db.exec(sql),
   run: (sql, params) => void db.prepare(sql).run(...params),
   get: <T>(sql: string, params: readonly unknown[]) =>

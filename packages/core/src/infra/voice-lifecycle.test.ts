@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isVoiceInstalled, preflight } from './voice-lifecycle'
+import { isVoiceInstalled, preflight, supportsPython } from './voice-lifecycle'
 
 let dir: string
 beforeEach(() => {
@@ -19,6 +19,12 @@ describe('isVoiceInstalled', () => {
 })
 
 describe('preflight', () => {
+  it('requires Python 3.11 or newer and rejects malformed versions', () => {
+    expect(supportsPython('3.10')).toBe(false)
+    expect(supportsPython('3.11')).toBe(true)
+    expect(supportsPython('3.15')).toBe(true)
+    expect(supportsPython('missing')).toBe(false)
+  })
   it('reports python + uv presence as booleans', () => {
     const p = preflight()
     expect(typeof p.python).toBe('boolean')

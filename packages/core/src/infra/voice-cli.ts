@@ -216,24 +216,31 @@ async function wakeImport(): Promise<void> {
 }
 
 /** `timmy voice install` — preflight (no silent installs), then clone + uv sync after a y/N prompt. */
-async function voiceInstallFlow(): Promise<void> {
+async function voiceInstallFlow(yes = false, repair = false): Promise<void> {
   const pre = preflight()
+  if (!pre.supported)
+    return fail(
+      'Voice is unavailable on this platform. Windows and macOS are supported; core text chat remains available.',
+    )
   const mark = (ok: boolean): string => (ok ? '✓' : '✗')
   console.log('Timmy voice needs:')
   console.log(`  ${mark(pre.python)} Python 3.11+`)
   console.log(`  ${mark(pre.uv)} uv`)
-  console.log('  ✗ voice daemon  (clone + uv sync into ~/.timmy/voice)')
+  if (process.platform !== 'win32') console.log(`  ${mark(pre.git)} git`)
+  console.log('  Voice dependencies and models will be installed in the selected profile.')
   if (!pre.python)
     return fail('Install Python 3.11+ first (e.g. `brew install python@3.12`), then re-run.')
-  if (!pre.uv)
-    return fail('Install uv first: `curl -LsSf https://astral.sh/uv/install.sh | sh`, then re-run.')
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const ans = await new Promise<string>((resolve) =>
-    rl.question('Install now? [y/N] ', (a) => resolve(a.trim().toLowerCase())),
-  )
-  rl.close()
-  if (ans !== 'y' && ans !== 'yes') return void console.log('Cancelled.')
-  const r = installVoice()
+  if (!pre.uv) return fail('Install uv using its official platform installer, then re-run.')
+  if (process.platform !== 'win32' && !pre.git) return fail('Install git, then re-run.')
+  if (!yes) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const ans = await new Promise<string>((resolve) =>
+      rl.question('Install now? [y/N] ', (a) => resolve(a.trim().toLowerCase())),
+    )
+    rl.close()
+    if (ans !== 'y' && ans !== 'yes') return void console.log('Cancelled.')
+  }
+  const r = installVoice(repair)
   if (r.ok) return void console.log('Voice installed.  Start it with: timmy voice start')
   if (r.reason === 'already-installed') return void console.log('Voice is already installed.')
   return fail(`Install failed (${r.reason}).`)
@@ -287,7 +294,10 @@ export async function voice(args: readonly string[]): Promise<void> {
         return applied(`voice ${key} → ${value}`)
       }
       case 'install':
-        return voiceInstallFlow()
+        return voiceInstallFlow(
+          args.includes('--yes') || args.includes('-y'),
+          args.includes('--repair'),
+        )
       case 'autostart': {
         const v = args[1]
         if (v !== 'on' && v !== 'off') return fail('Usage: timmy voice autostart <on|off>')
@@ -295,14 +305,18 @@ export async function voice(args: readonly string[]): Promise<void> {
         return applied(`voice.autostart → ${v === 'on'} (core starts voice on launch)`)
       }
       case 'start': {
-        const r = startVoice()
+        const r = await startVoice()
+        if ('unsupportedPlatform' in r)
+          return fail(
+            'Voice audio is not implemented upstream for this platform; core text chat is available.',
+          )
         if ('notInstalled' in r) return fail('Voice is not installed. Run: timmy voice install')
         if ('alreadyRunning' in r)
           return void console.log(`Voice already running (pid ${r.alreadyRunning}).`)
         return void console.log(`Voice started (pid ${r.started}).  Logs: timmy voice logs`)
       }
       case 'stop': {
-        const r = stopVoice()
+        const r = await stopVoice()
         return void console.log(
           'stopped' in r ? `Voice stopped (pid ${r.stopped}).` : 'Voice is not running.',
         )
@@ -311,12 +325,23 @@ export async function voice(args: readonly string[]): Promise<void> {
         if (!existsSync(VOICE_PATHS.logFile)) return void console.log('No voice logs yet.')
         return void process.stdout.write(readFileSync(VOICE_PATHS.logFile, 'utf8'))
       case 'uninstall':
-        uninstallVoice()
+        await uninstallVoice()
         return void console.log('Voice stopped and removed (~/.timmy/voice).')
       case 'status': {
         const lc = voiceLifecycleStatus()
         console.log(`installed: ${lc.installed}`)
         console.log(lc.running ? `running:   yes (pid ${lc.running})` : 'running:   no')
+        const statePath = join(CONFIG_DIR, 'voice', 'status.json')
+        if (process.platform === 'win32' && existsSync(statePath)) {
+          const state = JSON.parse(readFileSync(statePath, 'utf8')) as {
+            state: string
+            wake_detections: number
+            completed_turns: number
+          }
+          console.log(
+            `state:     ${state.state}; wakes: ${state.wake_detections}; spoken replies: ${state.completed_turns}`,
+          )
+        }
         console.log('config:')
         return void console.log(JSON.stringify(voiceStatus(), null, 2))
       }

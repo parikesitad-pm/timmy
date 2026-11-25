@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { mimeFromPath } from '../reasoning/vision'
 
 /** Absolute file path ending in an image extension. */
-const IMAGE_PATH = /(\/[^\s'"]+\.(?:png|jpe?g|webp|gif))/gi
+const IMAGE_PATH = /"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s"']+)/g
 
 /** Cap an inline image so a stray/huge file can't blow up memory or the request body.
  *  (Matches typical vision-API limits; only paths the USER typed are ever read here.) */
@@ -12,7 +12,19 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 /** Pure: extract candidate image file paths referenced in a message (absolute paths ending in
  *  an image extension). Existence is NOT checked here. */
 export function extractImagePaths(message: string): string[] {
-  return [...message.matchAll(IMAGE_PATH)].map((m) => m[1])
+  return [...message.matchAll(IMAGE_PATH)]
+    .map((m) => {
+      if (m[1] ?? m[2]) return m[1] ?? m[2]
+      const value = m[3]
+      let start = 0
+      let end = value.length
+      while (start < end && '(['.includes(value[start])) start++
+      while (end > start && '),;!?]'.includes(value[end - 1])) end--
+      return value.slice(start, end)
+    })
+    .filter(
+      (path) => /^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path) && /\.(png|jpe?g|webp|gif)$/i.test(path),
+    )
 }
 
 /** Read the existing image paths referenced in a message as data URLs, for inline attachment

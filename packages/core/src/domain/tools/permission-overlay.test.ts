@@ -5,7 +5,7 @@ import type { PermissionConfig } from '../config/config'
 
 const base: PermissionConfig = {
   mode: 'default',
-  tools: { askClaude: 'allow' },
+  tools: { askCodex: 'allow' },
   commands: { allow: ['ls'] },
 }
 
@@ -13,7 +13,7 @@ describe('mergeOverlay', () => {
   it('returns the base unchanged for an empty overlay', () => {
     expect(mergeOverlay(base, emptyOverlay())).toEqual({
       mode: 'default',
-      tools: { askClaude: 'allow' },
+      tools: { askCodex: 'allow' },
       commands: { allow: ['ls'] },
     })
   })
@@ -27,7 +27,7 @@ describe('mergeOverlay', () => {
       }),
     ).toEqual({
       mode: 'yolo',
-      tools: { askClaude: 'allow', runAppleScript: 'allow' },
+      tools: { askCodex: 'allow', runAppleScript: 'allow' },
       commands: { allow: ['ls', 'git commit'] },
     })
   })

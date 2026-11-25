@@ -1,6 +1,6 @@
 # Timmy
 
-Modular, local-first personal AI assistant platform. A local LLM handles most conversations at $0; cloud reasoning (Claude / DeepSeek / Gemini / OpenAI) and agentic work (Claude Code) are called only on demand. Terminal-first — the full assistant runs in your shell; GUI and workflow tooling are optional layers on top.
+Modular, local-first personal AI assistant platform. A local LLM handles most conversations at $0; cloud reasoning (Claude / DeepSeek / Gemini / OpenAI) and agentic work (Codex) are called only on demand. Terminal-first — the full assistant runs in your shell; GUI and workflow tooling are optional layers on top.
 
 > Deep design lives in the workspace `docs/` folder: `SYSTEM_DESIGN.md`, `TECH_STACK.md`, `DEVELOPMENT_PLAN.md`, `OLLAMA_GUIDE.md`.
 
@@ -23,14 +23,24 @@ Voice (optional, hands-free): `timmy voice install`, then `timmy voice start` (o
 
 > Beta is unsigned — on first run macOS may quarantine it; clear with `xattr -dr com.apple.quarantine ~/.local/bin/timmy`. Linux/Windows builds + code signing come later.
 
+## Codex integration (source workspace)
+
+Agentic delegation uses `@openai/codex-sdk`. Install Codex CLI and sign in with `codex login`, then confirm `codex login status`. Timmy does not copy credentials from this chat.
+
+After building the workspace, enable delegation with `timmy model askcodex default` and restart Timmy. The `default` model follows your Codex configuration; an explicit account-supported model can also be supplied. During `timmy init`, a logged-in Codex installation also offers `codex/default` as a frontdesk choice.
+
+Codex works in the directory where Timmy was launched, with a workspace-write sandbox by default. Existing installations must update old `claude_code` frontdesk settings and `askClaude` permission overrides to the new provider/tool names. The migration does not edit personal profiles automatically.
+
+Set TIMMY_HOME to an absolute directory for a separate Timmy data profile. The Windows workspace build and tests pass; foreground chat, background lifecycle and standalone Windows releases are tracked in pilot.md and parked/.
+
 ## Architecture
 
-**Timmy is the "frontdesk"** — one top-level agent (think JARVIS) that you configure with a provider + model (Ollama, OpenAI, Anthropic, Gemini, DeepSeek, or Claude Code). It chats locally for free and reaches for more power only when needed:
+**Timmy is the "frontdesk"** — one top-level agent (think JARVIS) that you configure with a provider + model (Ollama, OpenAI, Anthropic, Gemini, DeepSeek, or Codex). It chats locally for free and reaches for more power only when needed:
 
 - **`askModel`** — routes a hard question to a stronger reasoning model (safe-tier, auto-runs).
-- **`askClaude`** — hands agentic work to Claude Code with its own tools — run a script, prep a DB, do dev work (confirm-tier: you approve before it acts).
+- **`askCodex`** — hands agentic work to Codex with its own tools — run a script, prep a DB, do dev work (confirm-tier: you approve before it acts).
 
-**One shape everywhere: `(provider) + (toolset) + (loop)`.** The frontdesk, `askModel`, and `askClaude` are all instances of the same pattern, which keeps new capabilities _additive_ instead of forcing refactors.
+**One shape everywhere: `(provider) + (toolset) + (loop)`.** The frontdesk, `askModel`, and `askCodex` are all instances of the same pattern, which keeps new capabilities _additive_ instead of forcing refactors.
 
 **Layered, terminal-first modules** (SYSTEM_DESIGN §2.2):
 
@@ -43,7 +53,7 @@ Voice (optional, hands-free): `timmy voice install`, then `timmy voice start` (o
 
 **Daemon + clients.** `timmy start` runs the background daemon (HTTP/WebSocket on `127.0.0.1:3737`, SQLite persistence, Effect-TS core). The CLI is a thin client of it: `timmy chat` (interactive REPL), `timmy model …` (configure providers/models), `timmy plugin …`, `timmy init`, `timmy status`.
 
-**Tools** come from two sources merged into one registry — built-in core tools (`askModel`, `askClaude`) and **plugin tools** — each carrying a risk tier (`safe` auto-runs · `confirm` asks first · `blocked` disabled). Plugin tools are namespaced `<plugin>__<tool>` so they never collide and stay valid as cloud-provider function names.
+**Tools** come from two sources merged into one registry — built-in core tools (`askModel`, `askCodex`) and **plugin tools** — each carrying a risk tier (`safe` auto-runs · `confirm` asks first · `blocked` disabled). Plugin tools are namespaced `<plugin>__<tool>` so they never collide and stay valid as cloud-provider function names.
 
 ## Extending Timmy (plugins)
 
@@ -67,9 +77,11 @@ packages/
   core/    timmy-core — the daemon (HTTP/WS server, LLM providers, tool registry, persistence) + CLI
 ```
 
-Voice ships as a separate Python daemon ([`timmy-voice`](https://github.com/omatsetyadi/timmy-voice) — STT/TTS/wake-word) that `timmy voice install` sets up and core supervises; it talks to core over the same `/stream` contract. Still planned: `timmy-dashboard` (Electron) + the workflow platform. See `docs/DEVELOPMENT_PLAN.md` for the roadmap.
+Voice runs as a Python daemon supervised by core. Windows uses this repository's [hands-free voice package](packages/modules/voice/README.md): Hey/Hi Jarvis, CPU speech recognition and native SAPI cue/replies over core's voice-channel API. macOS uses the separate upstream [`timmy-voice`](https://github.com/omatsetyadi/timmy-voice) backend. Still planned: `timmy-dashboard` (Electron) + the workflow platform.
 
 ## Develop
+
+Windows x64 installation, native Codex setup, updates and source verification: [Windows guide](docs/WINDOWS.md). Local Windows artifacts are generated under `release/`.
 
 ```bash
 corepack enable pnpm # activate the pinned pnpm (first time only)

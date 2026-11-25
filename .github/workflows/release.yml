@@ -1,55 +1,81 @@
 name: release
-
-# Cuts a GitHub Release with the prebuilt single binary + SHA256SUMS that `install.sh` fetches.
-# Tag-triggered (private repo: macOS runners bill ~10x, so we build on releases only, not every push).
-# A manual run (workflow_dispatch) builds + smoke-tests the binary WITHOUT publishing — handy to
-# validate the pipeline before tagging.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
-
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  release:
-    # macos-14 is an arm64 runner → produces a native darwin-arm64 binary (the beta target).
-    runs-on: macos-14
-    permissions:
-      contents: write # create the GitHub Release
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: bun-darwin-arm64
+            asset: timmy-darwin-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            asset: timmy-windows-x64.exe
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.9
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 24
           cache: pnpm
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Windows'
+        with:
+          python-version: '3.12'
       - run: pnpm install --frozen-lockfile
-
-      # Build the workspace dep first: the bundle imports `timmy-sdk`, which resolves to its built
-      # dist/ — absent after a plain install, so the bun compile can't resolve it without this.
       - run: pnpm build
-
-      # Compile the standalone binary (bun:sqlite, embedded keyring/onnx — no Node needed at runtime).
-      - name: Build single binary (darwin-arm64)
-        working-directory: packages/core
-        run: bun build --compile src/index.ts --outfile "$GITHUB_WORKSPACE/timmy-darwin-arm64"
-
-      - name: Smoke-test the binary
-        run: ./timmy-darwin-arm64 version
-
-      - name: Generate checksums
-        run: shasum -a 256 timmy-darwin-arm64 > SHA256SUMS
-
-      # Publish only on a real version tag. A manual dispatch stops here (build validated, nothing shipped).
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - run: bun scripts/build-binary.mjs --target ${{ matrix.target }} --asset ${{ matrix.asset }}
+      - name: Standalone Windows flow with Node absent from child PATH
+        if: runner.os == 'Windows'
+        run: node scripts/windows-smoke.mjs --fixture
+        env:
+          TIMMY_EXECUTABLE: ${{ github.workspace }}/release/timmy-windows-x64.exe
+          TIMMY_NO_NODE_PATH: '1'
+          TIMMY_TEST_CONSOLE: '1'
+      - name: Installer validation
+        if: runner.os == 'Windows'
+        run: powershell.exe -NoProfile -File scripts/windows-installer-smoke.ps1
+      - name: macOS binary smoke
+        if: runner.os == 'macOS'
+        run: ./release/timmy-darwin-arm64 version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release/*
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - run: node scripts/merge-checksums.mjs
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
-            timmy-darwin-arm64
-            SHA256SUMS
-
-# Future targets (linux-x64, darwin-x64, linux-arm64): add a build matrix + one binary per runner,
-# all uploaded to the same release. Asset names must stay `timmy-<os>-<arch>` to match install.sh.
+            release/timmy-darwin-arm64
+            release/timmy-windows-x64.exe
+            release/SHA256SUMS
+            release/install.ps1

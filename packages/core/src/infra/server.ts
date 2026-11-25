@@ -50,6 +50,12 @@ export async function buildServer(
   runtime: ManagedRuntime.ManagedRuntime<AppServices, never>,
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: true })
+  const activeTurns = new Set<Fiber.RuntimeFiber<void, unknown>>()
+  const track = (fiber: Fiber.RuntimeFiber<void, unknown>) => {
+    activeTurns.add(fiber)
+    fiber.addObserver(() => activeTurns.delete(fiber))
+    return fiber
+  }
 
   const authorize = await registerAuth(app, config, runtime)
 
@@ -124,16 +130,18 @@ export async function buildServer(
     safeWrite(JSON.stringify({ thread_id: threadId }) + '\n')
 
     // NDJSON sink: each chunk a line, a mid-stream failure as {type:'error'}, {done:true} last.
-    const fiber = pumpChat(runtime, app.log, stream, {
-      chunk: (chunk) => safeWrite(JSON.stringify(chunk) + '\n'),
-      error: (message) => safeWrite(JSON.stringify({ type: 'error', message }) + '\n'),
-      done: () => {
-        safeWrite(JSON.stringify({ done: true }) + '\n')
-        if (!reply.raw.writableEnded && !reply.raw.destroyed) reply.raw.end()
-      },
-    })
-    req.raw.on('close', () => {
-      runtime.runFork(Fiber.interrupt(fiber))
+    const fiber = track(
+      pumpChat(runtime, app.log, stream, {
+        chunk: (chunk) => safeWrite(JSON.stringify(chunk) + '\n'),
+        error: (message) => safeWrite(JSON.stringify({ type: 'error', message }) + '\n'),
+        done: () => {
+          safeWrite(JSON.stringify({ done: true }) + '\n')
+          if (!reply.raw.writableEnded && !reply.raw.destroyed) reply.raw.end()
+        },
+      }),
+    )
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableFinished) runtime.runFork(Fiber.interrupt(fiber))
     })
   })
 
@@ -261,6 +269,11 @@ export async function buildServer(
   // emitting the same StreamChunk shapes /chat streams as NDJSON. One active turn per socket;
   // a new `chat` or `interrupt` cancels the in-flight turn (barge-in). See voice spec §3.2.
   const io = new SocketIOServer(app.server, { path: '/stream' })
+  app.addHook('preClose', async () => {
+    await Promise.all([...activeTurns].map((fiber) => runtime.runPromise(Fiber.interrupt(fiber))))
+    io.disconnectSockets(true)
+    io.engine.close()
+  })
   // Socket.IO attaches to the raw http server, so Fastify's onRequest auth hook never runs for the
   // WS handshake. Gate it here with the SAME `authorize` predicate so the voice socket can't bypass
   // auth. Clients pass the bearer token via `auth: { token }` (preferred) or an Authorization header.
@@ -334,16 +347,18 @@ export async function buildServer(
         const { threadId, stream } = sent.right
         socket.emit('thread', { thread_id: threadId })
         let turn: Fiber.RuntimeFiber<void, unknown> | null = null
-        turn = pumpChat(runtime, app.log, stream, {
-          chunk: (chunk) => socket.emit('chunk', chunk),
-          error: (message) => socket.emit('chunk', { type: 'error', message }),
-          done: () => {
-            // Only clear if THIS turn is still active — guards against a just-interrupted
-            // turn's finalizer nulling out a newer turn started by a barge-in.
-            if (active === turn) active = null
-            socket.emit('done', {})
-          },
-        })
+        turn = track(
+          pumpChat(runtime, app.log, stream, {
+            chunk: (chunk) => socket.emit('chunk', chunk),
+            error: (message) => socket.emit('chunk', { type: 'error', message }),
+            done: () => {
+              // Only clear if THIS turn is still active — guards against a just-interrupted
+              // turn's finalizer nulling out a newer turn started by a barge-in.
+              if (active === turn) active = null
+              socket.emit('done', {})
+            },
+          }),
+        )
         active = turn
       },
     )

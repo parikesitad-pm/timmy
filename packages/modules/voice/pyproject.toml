@@ -1,0 +1,25 @@
+[project]
+name = "timmy-voice-windows"
+version = "0.2.0"
+description = "Native Windows hands-free voice frontend for Timmy"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "aiohttp>=3.12,<4",
+  "faster-whisper>=1.2,<2",
+  "keyring>=25,<26",
+  "numpy>=1.26,<3",
+  "onnxruntime>=1.20,<2",
+  "openwakeword==0.6.0",
+  "pyyaml>=6,<7",
+  "sounddevice>=0.5,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/timmy_voice_windows"]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]

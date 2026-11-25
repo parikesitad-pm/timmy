@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { buildPlist, launchAgentPath, AUTOSTART_LABEL } from './autostart'
 
 describe('buildPlist', () => {
@@ -41,8 +43,8 @@ describe('buildPlist', () => {
 
 describe('launchAgentPath', () => {
   it('points at ~/Library/LaunchAgents/<label>.plist', () => {
-    expect(launchAgentPath('com.timmy.core')).toMatch(
-      /\/Library\/LaunchAgents\/com\.timmy\.core\.plist$/,
+    expect(launchAgentPath('com.timmy.core')).toBe(
+      join(homedir(), 'Library', 'LaunchAgents', 'com.timmy.core.plist'),
     )
   })
 })

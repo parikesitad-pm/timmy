@@ -4,9 +4,9 @@ import { CredentialStore } from '../credentials/credential-store'
 import { ProviderRegistry } from '../llm/provider-registry'
 import { makeProvider, type ProviderTarget } from '../llm/provider'
 import { resolveBaseUrl } from '../llm/known-providers'
-import { DEFAULT_CLAUDE_MODEL } from '../llm/claude-code-provider'
+import { DEFAULT_CODEX_MODEL } from '../llm/codex-provider'
 import { buildAskModelTool } from '../reasoning/model-router'
-import { buildAskClaudeTool } from '../reasoning/ask-claude'
+import { buildAskCodexTool } from '../reasoning/ask-codex'
 import { buildAskVisionTool, mimeFromPath } from '../reasoning/vision'
 import { resolveModelCapabilities } from '../llm/capabilities'
 import { readFile } from 'node:fs/promises'
@@ -63,19 +63,20 @@ export const CoreToolSource = Layer.effect(
       poolIds: () => pool.map((p) => p.id),
     })
 
-    const ccProvider = providers['claude_code']
-    const ccModel = ccProvider?.model ?? DEFAULT_CLAUDE_MODEL
+    const ccProvider = providers['codex']
+    const ccModel = ccProvider?.model ?? DEFAULT_CODEX_MODEL
     const cc = ccProvider
       ? makeProvider({
-          providerKey: 'claude_code',
-          kind: 'claude-code',
+          providerKey: 'codex',
+          kind: 'codex',
+          reportActions: true,
           model: ccModel,
           bypassPermissions: ccProvider.bypass_permissions === true, // "auto mode" toggle
         })
       : null
-    const askClaudeTool = cc
+    const askCodexTool = cc
       ? [
-          buildAskClaudeTool({
+          buildAskCodexTool({
             available: () => Effect.runPromise(cc.isAvailable()),
             run: (task) =>
               cc.chat([{ role: 'user', content: task }]) as Stream.Stream<StreamChunk, never>,
@@ -118,7 +119,7 @@ export const CoreToolSource = Layer.effect(
       listCap: cfg.memory.list_cap,
     })
     return {
-      tools: [askModel, askVision, ...askClaudeTool, ...memoryTools],
+      tools: [askModel, askVision, ...askCodexTool, ...memoryTools],
       credentialScopeByTool: new Map(),
     }
   }),

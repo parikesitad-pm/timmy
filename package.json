@@ -1,6 +1,6 @@
 {
   "name": "timmy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Timmy — modular, local-first personal AI assistant platform",
   "license": "UNLICENSED",
@@ -15,7 +15,12 @@
     "test": "turbo run test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:windows": "pnpm build && bun scripts/build-binary.mjs",
+    "smoke:windows": "node scripts/windows-smoke.mjs --fixture",
+    "smoke:codex": "node scripts/windows-smoke.mjs",
+    "smoke:autostart": "node scripts/windows-autostart-smoke.mjs",
+    "smoke:capabilities": "node scripts/windows-capabilities.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

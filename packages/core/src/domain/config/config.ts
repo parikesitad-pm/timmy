@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from 'effect'
 import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { load } from 'js-yaml'
 
 export interface FrontdeskConfig {
@@ -26,16 +26,13 @@ export interface UserConfig {
   about?: string
   style?: string
 }
-export type ProviderKind = 'ollama' | 'openai-compat' | 'claude-code'
+export type ProviderKind = 'ollama' | 'openai-compat' | 'codex'
 export interface ProviderConfig {
   kind: ProviderKind
   base_url?: string
-  /** claude-code only: which Claude model askClaude runs on (e.g. claude-opus-4-8 for hard
-   *  agentic work, claude-haiku-4-5 for cheap/fast). Defaults to DEFAULT_CLAUDE_MODEL. */
+  /** Codex model ID; omit or use "default" to follow the Codex configuration. */
   model?: string
-  /** claude-code only: "auto mode" — let Claude Code use ANY tool with NO restriction
-   *  (SDK `permissionMode: 'bypassPermissions'`) instead of the scoped allowlist. Off by
-   *  default; the scoped allowlist (Read/Glob/Grep/Bash/Edit/Write) is the safe default. */
+  /** Codex only: full filesystem access instead of the default workspace-write sandbox. */
   bypass_permissions?: boolean
 }
 export interface ReasoningConfig {
@@ -47,7 +44,7 @@ export const Permission = { ALLOW: 'allow', ASK: 'ask', BLOCK: 'block' } as cons
 export type Permission = (typeof Permission)[keyof typeof Permission]
 
 /** Global friction posture: `default` respects each tool's decision (mostly open, ask on
- *  risky); `yolo` auto-allows everything except `block` (like Claude's auto mode). */
+ *  risky); `yolo` auto-allows everything except `block` (like Codex's auto mode). */
 export const PermissionMode = { DEFAULT: 'default', YOLO: 'yolo' } as const
 export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode]
 
@@ -115,7 +112,7 @@ export interface TimmyConfig {
   }
 }
 
-export const CONFIG_DIR = join(homedir(), '.timmy')
+export const CONFIG_DIR = resolve(process.env.TIMMY_HOME ?? join(homedir(), '.timmy'))
 export const CONFIG_PATH = join(CONFIG_DIR, 'config.yaml')
 
 // Behavior only — no name. buildSystemPrompt leads with "You are <assistant.name>, a personal

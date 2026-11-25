@@ -67,7 +67,7 @@ export class ChatService extends Context.Tag('timmy/chat/service')<
           const threadId = exists && p.threadId ? p.threadId : yield* store.createThread()
           const history = yield* store.getMessages(threadId).pipe(Effect.orElseSucceed(() => []))
           const pool = yield* providerRegistry.pool
-          const claudeAvailable = config.providers?.claude_code !== undefined
+          const codexAvailable = config.providers?.codex !== undefined
           // Recall: pull the relevant memory subgraph for this message. `forMessage` is already
           // catchAll-wrapped to a safe empty result, but guard again so a failure here can never
           // break chat. `block` is injected into the system prompt; `entityNames` drives the
@@ -80,7 +80,7 @@ export class ChatService extends Context.Tag('timmy/chat/service')<
             history,
             p.message,
             pool.map((t) => t.id),
-            claudeAvailable,
+            codexAvailable,
             block,
             p.channel ?? 'text',
           )

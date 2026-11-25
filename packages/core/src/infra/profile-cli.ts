@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CONFIG_DIR, CONFIG_PATH, readConfigSync } from '../domain/config/config'
+import { editorCommand } from './editor-command'
 
 export type Raw = Record<string, unknown>
 
@@ -127,8 +128,12 @@ function editInEditor(seed: string): string {
   const file = join(dir, 'profile.txt')
   try {
     writeFileSync(file, seed, 'utf8')
-    const editor = process.env.EDITOR || process.env.VISUAL || 'vi'
-    execFileSync(editor, [file], { stdio: 'inherit', shell: false })
+    const editor = editorCommand(process.env.EDITOR || process.env.VISUAL)
+    execFileSync(editor.executable, [...editor.args, file], {
+      stdio: 'inherit',
+      shell: false,
+      env: editor.env,
+    })
     return readFileSync(file, 'utf8').trim()
   } finally {
     rmSync(dir, { recursive: true, force: true })
