@@ -508,8 +508,8 @@ async function model(args: readonly string[]): Promise<void> {
       setAskCodexBypass(v === 'on')
       console.log(
         v === 'on'
-          ? 'askCodex auto-mode ON — Codex runs with full filesystem access   (restart Timmy)'
-          : 'askCodex auto-mode OFF — workspace-write sandbox   (restart Timmy)',
+          ? 'Codex auto-mode ON — frontdesk and askCodex use full filesystem access   (restart Timmy)'
+          : 'Codex auto-mode OFF — frontdesk and askCodex use the workspace-write sandbox   (restart Timmy)',
       )
     } else {
       console.error(

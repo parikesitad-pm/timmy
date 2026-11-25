@@ -17,6 +17,8 @@ The installer checks SHA-256 before changing the installation, installs under Lo
 
 Choose codex/default during init to follow the model in the Codex configuration. Optional plugins can be declined. CODEX_PATH can point to a native codex.exe when it is not available through PATH. A Windows npm .cmd wrapper is not a native executable.
 
+Codex defaults to workspace-write permissions. `timmy model auto on` applies full filesystem access to both the main Codex provider and askCodex; `timmy model auto off` restores workspace-write after restart. Enable full access only when that is the access you intend. Desktop file operations are separate from screen/mouse automation, which this Windows voice backend does not add. The pinned SDK has a tracked windowsHide patch so background turns do not open a console window.
+
 ## Daily use
 
     timmy status

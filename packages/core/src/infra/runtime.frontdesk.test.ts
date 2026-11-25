@@ -8,6 +8,17 @@ const cfg = (
 ) => ({ models: { frontdesk }, providers }) as unknown as TimmyConfig
 
 describe('frontdeskTarget kind resolution', () => {
+  it('passes the configured Codex permission setting to the main provider', () => {
+    for (const bypass_permissions of [true, false]) {
+      const target = frontdeskTarget(
+        cfg(
+          { provider: 'codex', model: 'default' },
+          { codex: { kind: 'codex', bypass_permissions } },
+        ),
+      )
+      expect(target.bypassPermissions).toBe(bypass_permissions)
+    }
+  })
   it('ollama frontdesk → ollama (implicit local default)', () => {
     expect(frontdeskTarget(cfg({ provider: 'ollama', model: 'qwen3.6:27b' })).kind).toBe('ollama')
   })
