@@ -40,3 +40,25 @@ Current work: final regression checks, live Codex smoke on 0.2.0, hosted CI veri
 ## Handoff
 
 [Verification record](plan/validation.md), [Windows usage](docs/WINDOWS.md), [runbook](plan/windows-runbook.md), [initial audit](plan/windows-adjustments.md). Artifacts are in ignored `release/`. Release publication requires a separate request; no tag or release has been published.
+
+## Active scope update - 25 November
+
+Installed Timmy 0.2.0 at C:/Users/drvc-/AppData/Local/Programs/Timmy/timmy.exe. Existing profile/history preserved; previously absent config initialized with codex/default and keyword-only memory. Background health passes at 127.0.0.1:3737. Draft PR: https://github.com/parikesitad-pm/timmy/pull/1.
+
+Hosted Windows and Ubuntu CI both pass at revision 934efc1 (run 45595877186). Windows artifact testing exposed a hosted console-control delivery difference; its native-control harness fix passes locally. macOS artifact runner remains queued. Latest source fixes additionally await stop before voice uninstall and bound regex work.
+
+Active stage: [GN-09 Windows hands-free](plan/gn-09-windows-handsfree.md). Dap explicitly expanded the goal to live Hey Jarvis operation. The prior upstream Windows voice limitation is now being addressed with a local Windows backend; GN-05.05 resumes through GN-09. [GN-08 Vesper/hi vesper](parked/gn-08-vesper-identity.md) remains entirely parked until dap can test Hey Jarvis alive. Next: build the Windows audio package and install a managed Python 3.12 runtime; system Python remains unchanged.
+
+## Live Windows voice checkpoint
+
+[GN-09](plan/gn-09-windows-handsfree.md) tasks .01-.04 are verified. The installed CPU voice package uses native microphone capture, neural Hey Jarvis plus a speech-verified Hey/Hi Jarvis fallback, Whisper base recognition, SAPI output, authenticated control and graceful core-owned shutdown. A live wake and completed spoken response passed; dap confirmed hearing the reply. The first neural-only live attempt failed and is recorded as such. The inaudible system beep was replaced by a PCM speaker chime; human cue confirmation and final packaged deployment remain pending. Eight Python tests and 443 JS/SDK tests pass, with the same existing external macOS skip.
+
+GN-05.05 is resumed through GN-09: the upstream Windows implementation gap is addressed by this repository's package. The old parked record is historical, not a current claim that Windows voice is unavailable. [GN-08 Vesper](parked/gn-08-vesper-identity.md) stays parked until dap explicitly resumes the rename after this handoff.
+
+## Latest acceptance evidence
+
+Dap confirmed hearing a live spoken reply after the speech-verified Jarvis fallback was deployed. Runtime PID 20116 subsequently reported one wake and one completed turn, then returned to asleep. The system beep was not audible; a normal-output PCM two-note chime replaces it. Chime replay was requested and performed; audibility is still awaiting dap's confirmation. Core-owned voice shutdown has passed repeatedly, with the previous Python runtime gone before core restart.
+
+A one-second idle sample after voice acceptance measured approximately 400.5 MiB for voice and 191.5 MiB for core; total normalized CPU was about 0.58%. This is one idle sample, not a transcription peak or an Arch measurement. Speech verification/inference runs locally on CPU; Codex text generation remains remote. No raw microphone recording or transcript is stored in voice diagnostics.
+
+Latest correction: cue replay is audible through SAPI and native Codex is patched to hide its window. A combined test with terminals closed heard the cue/no CMD but returned an empty command transcription. GN-09 now uses speech-based capture, verified with real VAD/STT on a synthetic post-chime command. Nine Python tests pass. Combined live acceptance is still pending; earlier partial confirmations do not mark GN-09 done.

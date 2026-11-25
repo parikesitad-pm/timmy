@@ -17,3 +17,7 @@ Repeat build/regression/lifecycle checks on Windows and Ubuntu at the same revis
 ## Output, completion and verification
 
 `.github/workflows/ci.yml` contains the matrix and complete local fixture smoke. Local Windows checks pass; they do not prove Ubuntu or a hosted runner. Completion requires green Windows/Ubuntu jobs on the same source revision. Next action: push a review branch and run CI; record URL/revision/outcome here and in [pilot](../pilot.md).
+
+## Hosted checkpoint
+
+Windows and Ubuntu jobs both passed on 934efc1 in [run 45595877186](https://github.com/parikesitad-pm/timmy/actions/runs/45595877186). New Windows voice package tests are being added to the same workflow; final revision verification is tracked with GN-09.06. Release artifact jobs are separate from this core matrix.

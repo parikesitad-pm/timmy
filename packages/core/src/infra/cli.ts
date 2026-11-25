@@ -85,7 +85,8 @@ async function start(args: readonly string[]): Promise<void> {
   const { cmd, args: relaunchArgs } = relaunch(['start', '--foreground'])
   const r = await startBackground(CORE_PATHS, cmd, relaunchArgs, {
     ready: async (pid) => {
-      for (let attempt = 0; attempt < 100; attempt++) {
+      const attempts = readConfigSync().voice.autostart ? 1800 : 100
+      for (let attempt = 0; attempt < attempts; attempt++) {
         if (!isAlive(pid)) throw new Error('Daemon exited before it was ready; check timmy logs')
         const record = controlRecord(CONFIG_DIR)
         if (record?.pid === pid) {
@@ -116,6 +117,8 @@ async function startForeground(): Promise<void> {
   let closeControl: (() => Promise<void>) | undefined
   let ownedVoice: number | undefined
   let closing: Promise<void> | undefined
+  let starting = true
+  let interrupted = false
   const shutdown = (): Promise<void> =>
     (closing ??= (async () => {
       const errors: unknown[] = []
@@ -142,6 +145,10 @@ async function startForeground(): Promise<void> {
       if (errors.length) throw new AggregateError(errors, 'Daemon cleanup failed')
     })())
   const onSignal = (): void => {
+    if (starting) {
+      interrupted = true
+      return
+    }
     void (async () => {
       try {
         await shutdown()
@@ -157,17 +164,24 @@ async function startForeground(): Promise<void> {
     process.once('SIGTERM', onSignal)
     await app.listen({ host: config.server.host, port: config.server.port })
     mkdirSync(CONFIG_DIR, { recursive: true })
+    if (config.voice.autostart && isVoiceInstalled()) {
+      try {
+        const result = await startVoice()
+        if ('started' in result) ownedVoice = result.started
+        else if ('unsupportedPlatform' in result)
+          app.log.warn('Voice audio is unsupported on this platform; text chat is available')
+      } catch {
+        app.log.warn('Voice failed to start; text chat is available. Inspect timmy voice logs.')
+      }
+    }
     closeControl = await startControl(CONFIG_DIR, shutdown)
     writeFileSync(CORE_PATHS.pidFile, String(process.pid))
-    if (config.voice.autostart && isVoiceInstalled()) {
-      const result = await startVoice()
-      if ('started' in result) ownedVoice = result.started
-      else if ('unsupportedPlatform' in result)
-        app.log.warn('Voice audio is unsupported on this platform; text chat is available')
-    }
   } catch (error) {
     await shutdown()
     throw error
+  } finally {
+    starting = false
+    if (interrupted) onSignal()
   }
 }
 

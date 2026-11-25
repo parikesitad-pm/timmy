@@ -1,5 +1,7 @@
 # Changelog
 
+Windows hands-free voice adds real microphone capture, pretrained Hey Jarvis ONNX detection, CPU/int8 Whisper recognition, Windows SAPI output, locked Python dependencies, authenticated readiness/control and graceful microphone/speech cleanup. macOS retains its existing voice backend. Vesper branding/custom wake detection remains deferred.
+
 ## 0.2.0 — 2026-11-24
 
 - Add native Windows foreground/background lifecycle, authenticated shutdown, readiness checks and current-user login tasks.

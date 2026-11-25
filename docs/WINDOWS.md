@@ -46,7 +46,9 @@ Uninstall removes the managed executable, installation manifest and its user PAT
 
 Windows text chat, persistence, graceful foreground/background control and the console UI are covered by native tests. The standalone flow is also tested with Node absent from the child PATH. Native Windows credential storage and ONNX CPU inference are checked separately; a full text-embedding model download is an optional, separate check. Set models.embedding to none for keyword-only recall without a model download.
 
-The upstream voice project currently has no implemented Windows audio backend. Voice commands report that limitation and text chat remains available. See the project's pilot.md and parked/ records for outstanding platform-specific acceptance checks.
+Windows hands-free voice uses the backend in this repository: ONNX “Hey Jarvis” detection, CPU/int8 Whisper recognition, and Windows SAPI speech output. Install uv, then run `timmy voice install --yes`, `timmy voice start`, and `timmy voice status`. Say **Hey Jarvis**, wait for the beep, then speak. `timmy voice stop` closes the microphone and speech process. `timmy voice autostart on` starts voice with core; `timmy voice install --repair --yes` updates the installed voice source without deleting cached models.
+
+Voice requires managed Python 3.12 and downloads its locked dependencies/models on first install. CUDA is not required; system Python is preserved. This Windows backend pauses listening during recognition/replies; echo-cancelled barge-in is not implemented. Output pronunciation depends on installed SAPI voices. Microphone audio is not saved; recognized text follows normal core chat/history handling. Native engine and microphone checks are separate from a user's live wake-word acceptance. See pilot.md for the current acceptance result. macOS keeps its separate upstream backend; Linux voice remains pending.
 
 ## Build from source
 

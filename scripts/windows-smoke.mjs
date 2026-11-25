@@ -193,11 +193,13 @@ try {
   config.memory = { learning_mode: false }
   if (process.platform !== 'darwin') {
     config.voice = { autostart: true }
-    mkdirSync(join(home, 'voice'))
-    writeFileSync(
-      join(home, 'voice', 'pyproject.toml'),
-      '[project]\nname="unsupported-platform-fixture"\n',
-    )
+    if (process.platform !== 'win32') {
+      mkdirSync(join(home, 'voice'))
+      writeFileSync(
+        join(home, 'voice', 'pyproject.toml'),
+        '[project]\nname="unsupported-platform-fixture"\n',
+      )
+    }
   }
   writeFileSync(configPath, dump(config))
   await command(['profile', 'edit', 'assistant', 'name'])

@@ -7,10 +7,15 @@ import type { PlistSpec } from './autostart'
 export const windowsTaskName = (label: string): string =>
   `${label}-${createHash('sha256').update(CONFIG_DIR).digest('hex').slice(0, 12)}`
 
-export const quoteWindowsArgument = (value: string): string =>
-  !value || /[\s"]/.test(value)
-    ? `"${value.replace(/(\\*)"/g, (_, slashes: string) => `${slashes}${slashes}\\"`).replace(/(\\+)$/g, '$1$1')}"`
-    : value
+export const quoteWindowsArgument = (value: string): string => {
+  if (value && !/[\s"]/.test(value)) return value
+  const escaped = value.replace(/\\+|"/g, (part: string, offset: number) => {
+    if (part === '"') return '\\"'
+    const next = offset + part.length
+    return next === value.length || value[next] === '"' ? part + part : part
+  })
+  return `"${escaped}"`
+}
 
 const psQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`
 

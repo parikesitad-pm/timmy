@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@openai/codex-sdk@0.171.0': c7fad7e3248b7a6640cba24417d519e90f97a2ed84e48191c9bc7a4edbae4621
+
 importers:
   .:
     devDependencies:
@@ -48,7 +51,7 @@ importers:
         version: 1.3.0
       '@openai/codex-sdk':
         specifier: 0.171.0
-        version: 0.171.0
+        version: 0.171.0(patch_hash=c7fad7e3248b7a6640cba24417d519e90f97a2ed84e48191c9bc7a4edbae4621)
       effect:
         specifier: ^3.21.3
         version: 3.21.3
@@ -4412,7 +4415,7 @@ snapshots:
       '@napi-rs/keyring-win32-ia32-msvc': 1.3.0
       '@napi-rs/keyring-win32-x64-msvc': 1.3.0
 
-  '@openai/codex-sdk@0.171.0':
+  '@openai/codex-sdk@0.171.0(patch_hash=c7fad7e3248b7a6640cba24417d519e90f97a2ed84e48191c9bc7a4edbae4621)':
     dependencies:
       '@openai/codex': 0.171.0
 

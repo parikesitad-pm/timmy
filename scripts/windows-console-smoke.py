@@ -54,6 +54,9 @@ close_handle = bind('CloseHandle', w.BOOL, [w.HANDLE])
 get_standard = bind('GetStdHandle', w.HANDLE, [w.DWORD])
 set_standard = bind('SetStdHandle', w.BOOL, [w.DWORD, w.HANDLE])
 set_control_handler = bind('SetConsoleCtrlHandler', w.BOOL, [c.c_void_p, w.BOOL])
+attach_console = bind('AttachConsole', w.BOOL, [w.DWORD])
+free_console = bind('FreeConsole', w.BOOL, [])
+generate_control = bind('GenerateConsoleCtrlEvent', w.BOOL, [w.DWORD, w.DWORD])
 read = bind('ReadFile', w.BOOL, [w.HANDLE, c.c_void_p, w.DWORD, c.POINTER(w.DWORD), c.c_void_p])
 write = bind('WriteFile', w.BOOL, [w.HANDLE, c.c_void_p, w.DWORD, c.POINTER(w.DWORD), c.c_void_p])
 initialize = bind('InitializeProcThreadAttributeList', w.BOOL, [c.c_void_p, w.DWORD, w.DWORD, c.POINTER(c.c_size_t)])
@@ -137,7 +140,15 @@ try:
     close_handle(output_write)
     if options.mode == 'signal':
         until('Server listening')
-        send('\x03')
+        if os.environ.get('TIMMY_TEST_CTRL_EVENT') != '1':
+            send('\x03')
+        if os.environ.get('TIMMY_TEST_CTRL_EVENT') == '1' or wait_process(info.process, 2000) != 0:
+            # Some hosted ConPTY environments do not translate the input byte into a control event.
+            free_console()
+            checked(attach_console(info.pid))
+            checked(set_control_handler(None, True))
+            checked(generate_control(0, 0))
+            checked(free_console())
     elif options.mode == 'logs':
         until('TIMMY_LOG_CREATED café')
         send('\x03')
@@ -165,7 +176,9 @@ try:
         time.sleep(0.2)
         send('\r')
     if wait_process(info.process, 15_000) != 0:
-        raise AssertionError(f'Console command did not exit: {text()[-2000:]}')
+        receipt_path = Path(os.environ['TIMMY_HOME']) / 'shutdown.json'
+        receipt = receipt_path.read_text() if receipt_path.exists() else 'missing'
+        raise AssertionError(f'Console command did not exit; receipt={receipt}: {text()[-2000:]}')
     code = w.DWORD()
     checked(exit_code(info.process, c.byref(code)))
     if code.value != 0:

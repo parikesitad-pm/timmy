@@ -32,6 +32,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm lint
+      - name: Install locked Windows voice dependencies
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install uv==0.13.10
+          uv sync --frozen --no-dev --project packages/modules/voice --python 3.12
+      - name: Windows voice logic and lifecycle tests (no microphone/model download)
+        if: runner.os == 'Windows'
+        run: ./packages/modules/voice/.venv/Scripts/python.exe -m unittest discover -s packages/modules/voice/tests
       - name: Foreground, persistence and background smoke (local provider fixture)
         run: node scripts/windows-smoke.mjs --fixture
         env:

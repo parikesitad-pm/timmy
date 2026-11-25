@@ -10,3 +10,7 @@ dist/
 
 .timmy-pilot/
 release/
+.venv/
+__pycache__/
+*.pyc
+.pnpm-store/

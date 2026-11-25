@@ -74,3 +74,7 @@ Perintah `node .\plan\windows-probe.mjs` dijalankan pada Windows x64 dengan Node
 | HTTP loopback lokal pada port sementara            | PASS  |
 
 Probe hanya membuktikan kemampuan dasar runtime, bukan kompatibilitas Timmy end-to-end. Tidak menguji query SQLite atau native dependency proyek. Source aplikasi tetap tidak diubah.
+
+## Subsequent live voice implementation
+
+See [GN-09](gn-09-windows-handsfree.md) for implementation and acceptance evidence. Eight Python tests pass alongside 443 JS/SDK tests and the existing external macOS skip. Dap confirmed a live wake/spoken response after a local speech-verified Hey/Hi Jarvis fallback was added. Initial neural-only detection failed on the live microphone despite a passing synthetic wake score; that failure is retained in the stage record. Original system beep was inaudible; replacement PCM chime playback/replay performed, human cue confirmation pending. Final standalone packaging embeds the Python source and frozen uv.lock.

@@ -3,7 +3,7 @@
 - Status: done.
 - Verified: 24 November 2026, Windows x64, Node v24.22.3, pnpm 11.6.0.
 - Dependency: none.
-- Next: [GN-02 foreground](../parked/gn-02-core-foreground.md), ready and parked at finalization.
+- Next: [GN-02 foreground](gn-02-core-foreground.md), subsequently verified; current work is indexed in pilot.md.
 
 ## Goal and scope
 

@@ -25,7 +25,7 @@ if (editor.env?.ELECTRON_RUN_AS_NODE === '1') {
     timeout: 15_000,
     encoding: 'utf8',
   })
-  assert.match(version, /\d+\.\d+\.\d+/)
+  assert.match(version, /^\d+\.\d+\.\d+(?:\r?\n|$)/)
   console.log('PASS Windows code.cmd resolution through native VS Code CLI without a shell')
 }
 

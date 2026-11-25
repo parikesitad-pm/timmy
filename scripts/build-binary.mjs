@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto'
 import console from 'node:console'
-import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
@@ -13,10 +20,24 @@ const asset = assetIndex < 0 ? 'timmy-windows-x64.exe' : process.argv[assetIndex
 if (!['bun-windows-x64', 'bun-darwin-arm64'].includes(target) || !/^[a-z0-9.-]+$/.test(asset))
   throw new Error('Unsupported release target or asset name')
 const file = resolve(output, asset)
+const voiceSource = resolve('packages/modules/voice')
+const voiceFiles = [
+  'pyproject.toml',
+  'uv.lock',
+  'README.md',
+  ...readdirSync(resolve(voiceSource, 'src/timmy_voice_windows'))
+    .filter((name) => name.endsWith('.py'))
+    .map((name) => `src/timmy_voice_windows/${name}`),
+]
 const result = await globalThis.Bun.build({
   entrypoints: ['packages/core/src/index.ts'],
   define: {
     TIMMY_COMPILED: 'true',
+    TIMMY_WINDOWS_VOICE_FILES: JSON.stringify(
+      Object.fromEntries(
+        voiceFiles.map((name) => [name, readFileSync(resolve(voiceSource, name), 'utf8')]),
+      ),
+    ),
     'process.env.DEV': 'false',
     'process.env.NODE_ENV': '"production"',
   },

@@ -13,7 +13,15 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024
  *  an image extension). Existence is NOT checked here. */
 export function extractImagePaths(message: string): string[] {
   return [...message.matchAll(IMAGE_PATH)]
-    .map((m) => m[1] ?? m[2] ?? m[3].replace(/^[([]+|[),;!?\]]+$/g, ''))
+    .map((m) => {
+      if (m[1] ?? m[2]) return m[1] ?? m[2]
+      const value = m[3]
+      let start = 0
+      let end = value.length
+      while (start < end && '(['.includes(value[start])) start++
+      while (end > start && '),;!?]'.includes(value[end - 1])) end--
+      return value.slice(start, end)
+    })
     .filter(
       (path) => /^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path) && /\.(png|jpe?g|webp|gif)$/i.test(path),
     )
