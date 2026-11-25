@@ -5,6 +5,17 @@ import { join } from 'node:path'
 import { extractImagePaths, attachImages } from './image-attach'
 
 describe('extractImagePaths', () => {
+  it('handles quoted drive paths, UNC, POSIX and trailing punctuation without matching URLs', () => {
+    expect(
+      extractImagePaths(
+        String.raw`see "C:\My Pictures\x.png" and '\\server\share\my image.JPG' plus (/tmp/a.gif), https://host/image.png`,
+      ),
+    ).toEqual([
+      String.raw`C:\My Pictures\x.png`,
+      String.raw`\\server\share\my image.JPG`,
+      '/tmp/a.gif',
+    ])
+  })
   it('finds an absolute image path in a message', () => {
     expect(extractImagePaths('can you check /Users/me/Downloads/x.jpeg ?')).toEqual([
       '/Users/me/Downloads/x.jpeg',

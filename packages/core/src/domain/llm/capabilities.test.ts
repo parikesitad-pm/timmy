@@ -15,7 +15,7 @@ describe('ollamaCapsFromShow (real /api/show tags)', () => {
   })
 })
 
-describe('capabilitiesFor (static cloud/claude-code map by family)', () => {
+describe('capabilitiesFor (static cloud map by family)', () => {
   it('claude → vision + tools', () => {
     expect(capabilitiesFor('claude-sonnet-4-6')).toEqual({
       vision: true,

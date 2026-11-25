@@ -1,24 +1,38 @@
 name: ci
-
-# Typecheck + test + lint on every push and PR. Runs on the public repo (free Actions minutes).
-# The DB layer is node:sqlite (built-in) and the suite is self-contained, so a plain Linux runner
-# with Node 24 is enough — no native DB, no model downloads.
 on:
   push:
     branches: [main]
   pull_request:
-
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      TIMMY_HOME: ${{ runner.temp }}/timmy-unit-profile
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 24
           cache: pnpm
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Windows'
+        with:
+          python-version: '3.12'
+      - run: pnpm --version
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm lint
+      - name: Foreground, persistence and background smoke (local provider fixture)
+        run: node scripts/windows-smoke.mjs --fixture
+        env:
+          TIMMY_TEST_CONSOLE: ${{ runner.os == 'Windows' && '1' || '0' }}

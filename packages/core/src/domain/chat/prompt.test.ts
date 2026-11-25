@@ -54,13 +54,13 @@ it('injects the current date and time from the provided clock', () => {
   expect(p).toContain('June')
 })
 
-it('mentions askClaude as the agentic doer when claudeAvailable', () => {
+it('mentions askCodex as the agentic doer when codexAvailable', () => {
   const p = buildSystemPrompt(cfg, [], true)
-  expect(p).toMatch(/askClaude/)
+  expect(p).toMatch(/askCodex/)
   expect(p).toMatch(/its own tools/i)
 })
-it('omits askClaude when not available', () => {
-  expect(buildSystemPrompt(cfg, [], false)).not.toMatch(/askClaude/)
+it('omits askCodex when not available', () => {
+  expect(buildSystemPrompt(cfg, [], false)).not.toMatch(/askCodex/)
 })
 
 describe('assistant identity (name is live, not hardcoded)', () => {

@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { windowsAutostart } from './windows-autostart'
 
 /**
  * Autostart-on-login via a macOS **LaunchAgent** (`~/Library/LaunchAgents/<label>.plist` + launchctl).
@@ -55,10 +56,16 @@ export const launchAgentPath = (label: string): string =>
 
 /** Whether the LaunchAgent plist is installed (proxy for "autostart is enabled"). */
 export const isAutostartEnabled = (label = AUTOSTART_LABEL): boolean =>
-  existsSync(launchAgentPath(label))
+  process.platform === 'win32'
+    ? windowsAutostart('status', label)
+    : existsSync(launchAgentPath(label))
 
 /** Write the plist and register it with launchctl (idempotent: unload first if already loaded). */
 export const enableAutostart = (spec: PlistSpec): void => {
+  if (process.platform === 'win32') {
+    windowsAutostart('enable', spec.label, spec)
+    return
+  }
   const path = launchAgentPath(spec.label)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, buildPlist(spec))
@@ -73,6 +80,10 @@ export const enableAutostart = (spec: PlistSpec): void => {
 
 /** Unregister and remove the plist. No-op if not present. */
 export const disableAutostart = (label = AUTOSTART_LABEL): void => {
+  if (process.platform === 'win32') {
+    windowsAutostart('disable', label)
+    return
+  }
   const path = launchAgentPath(label)
   if (!existsSync(path)) return
   try {

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { composeContextBlock, rankAndCap } from './recall'
+import { composeContextBlock, rankAndCap, Recall } from './recall'
+import { Effect, Layer } from 'effect'
+import { Config } from '../config/config'
+import { Db } from '../persistence/db'
+import { EntityStore } from './entity-store'
+import { Embedder, makeEmbedder } from './embedder'
 import type { Entity, Relation } from './types'
 
 const e = (id: string, kind: string, name: string, p = {}): Entity => ({
@@ -10,6 +15,32 @@ const e = (id: string, kind: string, name: string, p = {}): Entity => ({
   confidence: 0.8,
   source: 'conversation',
   lastUpdated: '',
+})
+
+it('recalls and searches stored entities by keyword when embeddings are unavailable', async () => {
+  const storeLayer = EntityStore.Live.pipe(Layer.provide(Db.Live(':memory:')))
+  const dependencies = Layer.mergeAll(
+    storeLayer,
+    Config.Live('/nonexistent/timmy-recall-fixture.yaml'),
+    Layer.succeed(
+      Embedder,
+      makeEmbedder(() => Promise.resolve(null)),
+    ),
+  )
+  const layer = Recall.Live.pipe(Layer.provideMerge(dependencies))
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const store = yield* EntityStore
+      yield* store.resolveAndUpsert({ kind: 'preference', name: 'Windows native' }, null)
+      const recall = yield* Recall
+      expect((yield* recall.forMessage('I need Windows native support')).entityNames).toContain(
+        'Windows native',
+      )
+      expect((yield* recall.search('Windows', 5)).map((entity) => entity.name)).toEqual([
+        'Windows native',
+      ])
+    }).pipe(Effect.provide(layer)),
+  )
 })
 
 describe('composeContextBlock', () => {

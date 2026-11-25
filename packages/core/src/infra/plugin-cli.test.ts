@@ -24,7 +24,7 @@ import {
 /** Build a fake "built" plugin source dir: `<root>/<name>/dist/index.js` + `package.json`.
  *  Returns the plugin source dir path. */
 function fakeBuiltPlugin(name: string): string {
-  const root = mkdtempSync(join(tmpdir(), 'plugin-src-'))
+  const root = mkdtempSync(join(tmpdir(), 'plugin src '))
   const src = join(root, name)
   mkdirSync(join(src, 'dist'), { recursive: true })
   writeFileSync(join(src, 'dist', 'index.js'), 'module.exports.default = {}')

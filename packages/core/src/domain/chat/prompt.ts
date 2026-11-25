@@ -7,7 +7,7 @@ export type Channel = 'text' | 'voice'
 export function buildSystemPrompt(
   config: TimmyConfig,
   reasoningTargets: readonly string[] = [],
-  claudeAvailable = false,
+  codexAvailable = false,
   memoryBlock = '',
   channel: Channel = 'text',
   now: Date = new Date(),
@@ -45,11 +45,11 @@ export function buildSystemPrompt(
       `\n\nFor reasoning beyond your own depth you can call the askModel tool to consult a stronger model, ` +
       `then answer the user yourself in your own voice. Available targets: ${reasoningTargets.join(', ')}.`
   }
-  if (claudeAvailable) {
+  if (codexAvailable) {
     p +=
       `\n\nFor HEAVY, multi-step, code-related work (refactors, building a feature, complex DB/docker setup, making a ticket PR-ready), ` +
-      `call the askClaude tool: Claude Code executes the task with its own tools and reports back. ` +
-      `askClaude DOES work; askModel only reasons. Don't use askClaude for something runCommand can do in one command.`
+      `call the askCodex tool: Codex executes the task with its own tools and reports back. ` +
+      `askCodex DOES work; askModel only reasons. Don't use askCodex for something runCommand can do in one command.`
   }
   // User-authored "about me": grounding the user wrote themselves (name + bio). Placed after the
   // behavioral instructions and BEFORE the auto-learned memory block, so the user's own words lead.
@@ -90,7 +90,7 @@ export function buildMessages(
   history: MessageRow[],
   userMessage: string,
   reasoningTargets: readonly string[] = [],
-  claudeAvailable = false,
+  codexAvailable = false,
   memoryBlock = '',
   channel: Channel = 'text',
   now: Date = new Date(),
@@ -101,7 +101,7 @@ export function buildMessages(
       content: buildSystemPrompt(
         config,
         reasoningTargets,
-        claudeAvailable,
+        codexAvailable,
         memoryBlock,
         channel,
         now,

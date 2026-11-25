@@ -1,10 +1,10 @@
 import { Effect } from 'effect'
 import { load, dump } from 'js-yaml'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { Config, CONFIG_PATH, effectiveProviders } from '../domain/config/config'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { Config, CONFIG_DIR, CONFIG_PATH, effectiveProviders } from '../domain/config/config'
 import { CredentialStore } from '../domain/credentials/credential-store'
 import { ProviderRegistry } from '../domain/llm/provider-registry'
-import { DEFAULT_CLAUDE_MODEL, KNOWN_CLAUDE_MODELS } from '../domain/llm/claude-code-provider'
+import { DEFAULT_CODEX_MODEL, codexAvailable } from '../domain/llm/codex-provider'
 import { KNOWN_BASE_URLS, resolveBaseUrl } from '../domain/llm/known-providers'
 import { resolveModelCapabilities } from '../domain/llm/capabilities'
 import type { DetectedCapabilities } from '../domain/llm/llm-client'
@@ -31,7 +31,10 @@ const loadRaw = (): RawConfig => {
   }
 }
 // NOTE: rewriting via js-yaml normalizes the file (drops comments) — accepted tradeoff.
-const saveRaw = (cfg: RawConfig): void => writeFileSync(CONFIG_PATH, dump(cfg), 'utf8')
+const saveRaw = (cfg: RawConfig): void => {
+  mkdirSync(CONFIG_DIR, { recursive: true })
+  writeFileSync(CONFIG_PATH, dump(cfg), 'utf8')
+}
 
 /** Set the frontdesk provider+model in config.yaml. base_url is resolved at boot (known
  *  providers) or read from the `providers` block, so it isn't written here. */
@@ -41,24 +44,23 @@ export const setFrontdeskConfig = (provider: string, model: string): void => {
   saveRaw(raw)
 }
 
-/** Set the model askClaude (Claude Code) runs on: `providers.claude_code.model`. Creates the
- *  claude_code provider entry if it's absent. */
-export const setAskClaudeModel = (model: string): void => {
+/** Set the model askCodex (Codex) runs on: `providers.codex.model`. Creates the
+ *  codex provider entry if it's absent. */
+export const setAskCodexModel = (model: string): void => {
   const raw = loadRaw()
   const providers = raw.providers ?? {}
-  providers.claude_code = { ...(providers.claude_code ?? {}), kind: 'claude-code', model }
+  providers.codex = { ...(providers.codex ?? {}), kind: 'codex', model }
   raw.providers = providers
   saveRaw(raw)
 }
 
-/** Toggle askClaude "auto mode": `providers.claude_code.bypass_permissions` (any tool, no
- *  allowlist). Creates the claude_code provider entry if it's absent. */
-export const setAskClaudeBypass = (on: boolean): void => {
+/** Toggle full filesystem access for Codex. Creates the provider entry if absent. */
+export const setAskCodexBypass = (on: boolean): void => {
   const raw = loadRaw()
   const providers = raw.providers ?? {}
-  providers.claude_code = {
-    ...(providers.claude_code ?? {}),
-    kind: 'claude-code',
+  providers.codex = {
+    ...(providers.codex ?? {}),
+    kind: 'codex',
     bypass_permissions: on,
   }
   raw.providers = providers
@@ -139,18 +141,6 @@ export interface StatusReport {
   providers: { key: string; kind: string; hasKey: boolean; models: StatusModel[]; note?: string }[]
 }
 
-/** `claude auth status` exit 0 → logged in. Spawned directly (no SDK import on the status path). */
-const claudeCodeAvailable = Effect.tryPromise(() =>
-  import('node:child_process').then(
-    ({ spawn }) =>
-      new Promise<boolean>((resolve) => {
-        const p = spawn('claude', ['auth', 'status'], { stdio: 'ignore' })
-        p.on('error', () => resolve(false))
-        p.on('close', (code) => resolve(code === 0))
-      }),
-  ),
-).pipe(Effect.catchAll(() => Effect.succeed(false)))
-
 export const statusReport = Effect.gen(function* () {
   const cfg = yield* (yield* Config).get
   const creds = yield* CredentialStore
@@ -159,18 +149,18 @@ export const statusReport = Effect.gen(function* () {
   const providers = Object.entries(effectiveProviders(cfg)) // includes implicit Ollama default
   const rows: StatusReport['providers'] = []
   for (const [key, pc] of providers) {
-    if (pc.kind === 'claude-code') {
-      // Not an askModel reasoning target (it's askClaude's agentic engine), so no discovered
-      // models — but report truthful availability via `claude auth status` + a clarifying note.
-      const available = yield* claudeCodeAvailable
-      const model = pc.model ?? DEFAULT_CLAUDE_MODEL
+    if (pc.kind === 'codex') {
+      // Not an askModel reasoning target (it's askCodex's agentic engine), so no discovered
+      // models — but report truthful availability via `codex login status` + a clarifying note.
+      const available = yield* codexAvailable
+      const model = pc.model ?? DEFAULT_CODEX_MODEL
       const auto = pc.bypass_permissions === true ? ', auto-mode ON' : ''
       rows.push({
         key,
         kind: pc.kind,
         hasKey: available,
-        models: KNOWN_CLAUDE_MODELS.map((m) => ({ name: m })),
-        note: `askClaude's agentic engine — currently ${model}${auto}; pick one above with \`model askclaude <model>\`. Not an askModel reasoning target.`,
+        models: [{ name: model }],
+        note: `askCodex's agentic engine — currently ${model}${auto}; set an account-supported model with \`model askcodex <model>\`. Not an askModel reasoning target.`,
       })
       continue
     }
@@ -205,18 +195,18 @@ export const statusReport = Effect.gen(function* () {
 
 export interface InitChoices {
   frontdesk: { provider: string; model: string }
-  claudeAuthed: boolean
+  codexAuthed: boolean
   /** a cloud provider set up during init (e.g. 'deepseek'); added to the providers block. */
   cloudProvider?: string
   /** Extra cloud providers configured during init — the reasoning fallback (#3) plus any optional
    *  keys (#4), e.g. ['anthropic', 'gemini']. Each is added to the providers block as openai-compat
    *  (base_url auto-resolves for known providers); API keys are stored separately in the keychain.
-   *  Deduped against the frontdesk cloud provider + claude_code. */
+   *  Deduped against the frontdesk cloud provider + codex. */
   extraProviders?: string[]
 }
 
-/** Detect the local environment for `timmy init`: reachable Ollama models + Claude Code auth.
- *  Needs no services (fetch + `claude auth status`), so it runs before any config exists. */
+/** Detect the local environment for `timmy init`: reachable Ollama models + Codex auth.
+ *  Needs no services (fetch + `codex login status`), so it runs before any config exists. */
 export const detectEnv = Effect.gen(function* () {
   const ollamaModels = yield* Effect.tryPromise(() =>
     fetch('http://localhost:11434/api/tags').then(
@@ -226,19 +216,19 @@ export const detectEnv = Effect.gen(function* () {
     Effect.map((d) => (d.models ?? []).map((m) => m.name)),
     Effect.catchAll(() => Effect.succeed([] as string[])),
   )
-  const claudeAuthed = yield* claudeCodeAvailable
-  return { ollamaModels, claudeAuthed }
+  const codexAuthed = yield* codexAvailable
+  return { ollamaModels, codexAuthed }
 })
 
 /** Pure: the config object `timmy init` writes. Ollama is implicit (effectiveProviders) so it
- *  isn't written; claude_code is added when logged in; a chosen cloud provider is added with its
+ *  isn't written; codex is added when logged in; a chosen cloud provider is added with its
  *  base_url auto-resolved (known providers) — its API key is stored separately in the keychain. */
 export const buildInitConfig = (c: InitChoices): RawConfig => {
   const providers: Record<string, Record<string, unknown>> = {}
-  if (c.claudeAuthed) providers.claude_code = { kind: 'claude-code' }
+  if (c.codexAuthed) providers.codex = { kind: 'codex' }
   if (c.cloudProvider) providers[c.cloudProvider] = { kind: 'openai-compat' }
   for (const p of c.extraProviders ?? []) {
-    if (!providers[p]) providers[p] = { kind: 'openai-compat' } // dedupe — don't overwrite claude_code/frontdesk
+    if (!providers[p]) providers[p] = { kind: 'openai-compat' } // dedupe — don't overwrite codex/frontdesk
   }
   const raw: RawConfig = { models: { frontdesk: c.frontdesk } }
   if (Object.keys(providers).length > 0) raw.providers = providers

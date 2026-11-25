@@ -81,12 +81,17 @@ export class LlmClient extends Context.Tag('timmy/llm/client')<
 /** Build the Ollama (NDJSON) implementation of the LlmClient service interface. */
 export const makeOllamaClient = (config: LlmConfig): Context.Tag.Service<LlmClient> => ({
   chat: (messages, tools) =>
-    Stream.unwrap(
+    Stream.unwrapScoped(
       Effect.gen(function* () {
+        const controller = yield* Effect.acquireRelease(
+          Effect.sync(() => new AbortController()),
+          (controller) => Effect.sync(() => controller.abort()),
+        )
         const res = yield* Effect.tryPromise({
           try: () =>
             fetch(`${config.baseUrl}/api/chat`, {
               method: 'POST',
+              signal: controller.signal,
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
                 model: config.model,

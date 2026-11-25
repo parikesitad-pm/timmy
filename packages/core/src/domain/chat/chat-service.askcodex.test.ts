@@ -18,7 +18,7 @@ import { Recall } from '../memory/recall'
 import { Extractor } from '../memory/extract'
 
 // ---------------------------------------------------------------------------
-// Task 16 Step 1b — askClaude integration test
+// Task 16 Step 1b — askCodex integration test
 //
 // Asserts:
 //   1. A confirm_required chunk is emitted mid-stream (the confirm gate fires).
@@ -31,7 +31,7 @@ const ConfigStub = Config.Live(`${process.cwd()}/__nope__.yaml`) // defaults
 const ThreadStub = Layer.succeed(
   ThreadStore,
   ThreadStore.of({
-    createThread: () => Effect.succeed('t-askclaude'),
+    createThread: () => Effect.succeed('t-askcodex'),
     threadExists: () => Effect.succeed(true),
     addMessage: () => Effect.void,
     getMessages: () => Effect.succeed([]),
@@ -56,8 +56,8 @@ const MemoryStub = Layer.mergeAll(
   Layer.succeed(Extractor, Extractor.of({ extract: () => Effect.void })),
 )
 
-// Scripted LLM: turn 1 → tool_call askClaude (confirm-tier); turn 2 → content "Done".
-const makeAskClaudeLlm = () => {
+// Scripted LLM: turn 1 → tool_call askCodex (confirm-tier); turn 2 → content "Done".
+const makeAskCodexLlm = () => {
   let turn = 0
   return Layer.succeed(
     LlmClient,
@@ -68,7 +68,7 @@ const makeAskClaudeLlm = () => {
           return Stream.fromIterable<StreamChunk>([
             {
               type: 'tool_call',
-              toolCall: { id: 'c1', name: 'askClaude', arguments: '{"task":"make a dev db"}' },
+              toolCall: { id: 'c1', name: 'askCodex', arguments: '{"task":"make a dev db"}' },
             },
             { type: 'finish', reason: 'tool_calls' },
           ])
@@ -85,17 +85,17 @@ const makeAskClaudeLlm = () => {
   )
 }
 
-// Canned askClaude tool — confirm tier, returns agentic result.
-const askClaudeTool: Tool = {
-  name: 'askClaude',
-  description: 'Delegate an agentic task to Claude Code',
+// Canned askCodex tool — confirm tier, returns agentic result.
+const askCodexTool: Tool = {
+  name: 'askCodex',
+  description: 'Delegate an agentic task to Codex',
   parameters: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] },
   riskLevel: 'confirm',
   execute: async () => ({ ok: true, data: { text: 'created dev DB', actions: ['Bash'] } }),
 }
 
-it.live('askClaude is gated by confirm, then its result feeds the answer', () => {
-  const StubLlm = makeAskClaudeLlm()
+it.live('askCodex is gated by confirm, then its result feeds the answer', () => {
+  const StubLlm = makeAskCodexLlm()
   return Effect.gen(function* () {
     const pc = yield* PendingConfirmations
     const chat = yield* ChatService
@@ -135,7 +135,7 @@ it.live('askClaude is gated by confirm, then its result feeds the answer', () =>
             ProviderRegistryStub,
             MemoryStub,
             ToolRegistry.Live.pipe(
-              Layer.provide(ToolSource.layer([askClaudeTool])),
+              Layer.provide(ToolSource.layer([askCodexTool])),
               Layer.provide(CredentialStore.Live),
               Layer.provide(ConfigStub),
             ),
@@ -155,7 +155,7 @@ it.live('askClaude is gated by confirm, then its result feeds the answer', () =>
 // ADDITIONAL: verify that the confirm_required chunk arrives BEFORE the resolve
 // (no block-buffering regression from the existing test suite).
 it.live('delivers confirm_required to consumer BEFORE the decision', () => {
-  const StubLlm = makeAskClaudeLlm()
+  const StubLlm = makeAskCodexLlm()
   return Effect.gen(function* () {
     const pc = yield* PendingConfirmations
     const chat = yield* ChatService
@@ -195,7 +195,7 @@ it.live('delivers confirm_required to consumer BEFORE the decision', () => {
             ProviderRegistryStub,
             MemoryStub,
             ToolRegistry.Live.pipe(
-              Layer.provide(ToolSource.layer([askClaudeTool])),
+              Layer.provide(ToolSource.layer([askCodexTool])),
               Layer.provide(CredentialStore.Live),
               Layer.provide(ConfigStub),
             ),

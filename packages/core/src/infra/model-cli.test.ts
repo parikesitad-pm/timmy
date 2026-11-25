@@ -52,25 +52,22 @@ describe('addKnownProvider', () => {
 })
 
 describe('buildInitConfig (timmy init → config object)', () => {
-  itV(
-    'ollama frontdesk → no providers block (ollama is implicit); claude_code added when authed',
-    () => {
-      expect(
-        buildInitConfig({
-          frontdesk: { provider: 'ollama', model: 'qwen3:14b' },
-          claudeAuthed: true,
-        }),
-      ).toEqual({
-        models: { frontdesk: { provider: 'ollama', model: 'qwen3:14b' } },
-        providers: { claude_code: { kind: 'claude-code' } },
-      })
-    },
-  )
+  itV('ollama frontdesk → no providers block (ollama is implicit); codex added when authed', () => {
+    expect(
+      buildInitConfig({
+        frontdesk: { provider: 'ollama', model: 'qwen3:14b' },
+        codexAuthed: true,
+      }),
+    ).toEqual({
+      models: { frontdesk: { provider: 'ollama', model: 'qwen3:14b' } },
+      providers: { codex: { kind: 'codex' } },
+    })
+  })
   itV('ollama frontdesk, no claude → no providers block at all', () => {
     expect(
       buildInitConfig({
         frontdesk: { provider: 'ollama', model: 'qwen3:14b' },
-        claudeAuthed: false,
+        codexAuthed: false,
       }),
     ).toEqual({
       models: { frontdesk: { provider: 'ollama', model: 'qwen3:14b' } },
@@ -80,7 +77,7 @@ describe('buildInitConfig (timmy init → config object)', () => {
     expect(
       buildInitConfig({
         frontdesk: { provider: 'deepseek', model: 'deepseek-v4-flash' },
-        claudeAuthed: false,
+        codexAuthed: false,
         cloudProvider: 'deepseek',
       }),
     ).toEqual({
@@ -93,31 +90,31 @@ describe('buildInitConfig (timmy init → config object)', () => {
     expect(
       buildInitConfig({
         frontdesk: { provider: 'ollama', model: 'qwen3:14b' },
-        claudeAuthed: true,
+        codexAuthed: true,
         extraProviders: ['anthropic', 'gemini'],
       }),
     ).toEqual({
       models: { frontdesk: { provider: 'ollama', model: 'qwen3:14b' } },
       providers: {
-        claude_code: { kind: 'claude-code' },
+        codex: { kind: 'codex' },
         anthropic: { kind: 'openai-compat' },
         gemini: { kind: 'openai-compat' },
       },
     })
   })
 
-  itV('extraProviders dedupe against the cloud frontdesk + claude_code (no overwrite)', () => {
+  itV('extraProviders dedupe against the cloud frontdesk + codex (no overwrite)', () => {
     expect(
       buildInitConfig({
         frontdesk: { provider: 'deepseek', model: 'deepseek-v4-flash' },
-        claudeAuthed: true,
+        codexAuthed: true,
         cloudProvider: 'deepseek',
-        extraProviders: ['deepseek', 'claude_code', 'anthropic'],
+        extraProviders: ['deepseek', 'codex', 'anthropic'],
       }),
     ).toEqual({
       models: { frontdesk: { provider: 'deepseek', model: 'deepseek-v4-flash' } },
       providers: {
-        claude_code: { kind: 'claude-code' },
+        codex: { kind: 'codex' },
         deepseek: { kind: 'openai-compat' },
         anthropic: { kind: 'openai-compat' },
       },

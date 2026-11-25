@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { PluginLoader } from './plugin-loader'
 
 const fixtureDir = () => {
-  const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+  const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
   const good = join(root, 'good')
   mkdirSync(good)
   writeFileSync(
@@ -33,7 +33,7 @@ it.effect('loads valid plugins, skips malformed', () =>
 // colon-free, so a colon-named plugin fails decode and the loader logs-and-skips it.
 it.effect('skips a plugin whose name contains the keychain delimiter (:)', () =>
   Effect.gen(function* () {
-    const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+    const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
     const evil = join(root, 'evil')
     mkdirSync(evil)
     writeFileSync(
@@ -59,7 +59,7 @@ const writePlugin = (root: string, dir: string, body: string): void => {
 // is skipped.
 it.effect('loads a legacy plugin that declares no apiVersion', () =>
   Effect.gen(function* () {
-    const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+    const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
     writePlugin(root, 'legacy', `{ name:'legacy', version:'1', ${TOOL} }`)
     const plugins = yield* PluginLoader.load(root)
     expect(plugins.map((p) => p.name)).toEqual(['legacy'])
@@ -68,7 +68,7 @@ it.effect('loads a legacy plugin that declares no apiVersion', () =>
 
 it.effect('skips a plugin whose apiVersion is newer than this host supports', () =>
   Effect.gen(function* () {
-    const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+    const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
     writePlugin(root, 'future', `{ apiVersion:999, name:'future', version:'1', ${TOOL} }`)
     writePlugin(root, 'okp', `{ apiVersion:1, name:'okp', version:'1', ${TOOL} }`)
     const plugins = yield* PluginLoader.load(root)
@@ -78,7 +78,7 @@ it.effect('skips a plugin whose apiVersion is newer than this host supports', ()
 
 it.effect('keeps the first of two plugins sharing a name, skips the later', () =>
   Effect.gen(function* () {
-    const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+    const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
     writePlugin(root, 'a-dir', `{ apiVersion:1, name:'dup', version:'1', ${TOOL} }`)
     writePlugin(root, 'b-dir', `{ apiVersion:1, name:'dup', version:'2', ${TOOL} }`)
     const plugins = yield* PluginLoader.load(root)
@@ -89,7 +89,7 @@ it.effect('keeps the first of two plugins sharing a name, skips the later', () =
 
 it.effect('skips a plugin that declares two tools with the same name', () =>
   Effect.gen(function* () {
-    const root = mkdtempSync(join(tmpdir(), 'plugins-'))
+    const root = mkdtempSync(join(tmpdir(), 'plugins fixture '))
     const dupTools =
       "tools:[{name:'t',description:'d',parameters:{type:'object',properties:{}},riskLevel:'safe',execute:async()=>({ok:true})},{name:'t',description:'d2',parameters:{type:'object',properties:{}},riskLevel:'safe',execute:async()=>({ok:true})}]"
     writePlugin(root, 'clash', `{ apiVersion:1, name:'clash', version:'1', ${dupTools} }`)
@@ -102,7 +102,7 @@ it.effect('skips a plugin that declares two tools with the same name', () =>
 // ENOTDIR synchronously. The loader must degrade to [] rather than kill the fiber.
 it.effect('returns [] when the plugins path is a file, not a directory', () =>
   Effect.gen(function* () {
-    const f = join(mkdtempSync(join(tmpdir(), 'plugins-')), 'notadir')
+    const f = join(mkdtempSync(join(tmpdir(), 'plugins fixture ')), 'notadir')
     writeFileSync(f, 'x')
     const plugins = yield* PluginLoader.load(f)
     expect(plugins).toEqual([])

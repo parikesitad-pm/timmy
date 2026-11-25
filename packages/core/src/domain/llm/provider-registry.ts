@@ -38,7 +38,7 @@ export const discoverModels = (
       Effect.catchAll(() => Effect.succeed([])),
     )
   }
-  // claude-code discovery is added in its own task; default empty here.
+  // codex discovery is added in its own task; default empty here.
   return Effect.succeed([])
 }
 
@@ -61,9 +61,9 @@ export class ProviderRegistry extends Context.Tag('timmy/llm/provider-registry')
         for (const [providerKey, pc] of Object.entries(providers)) {
           const key = pc.kind === 'openai-compat' ? yield* creds.get(apiKeyKey(providerKey)) : null
           const models = yield* discoverModels(providerKey, pc, key)
-          // claude-code intentionally has no discovered reasoning models (it's askClaude's
+          // codex intentionally has no discovered reasoning models (it's askCodex's
           // agentic engine, not an askModel target) — don't log it as "unavailable".
-          if (models.length === 0 && pc.kind !== 'claude-code')
+          if (models.length === 0 && pc.kind !== 'codex')
             yield* Effect.logInfo(
               `provider '${providerKey}' discovered no models (unavailable or no key)`,
             )

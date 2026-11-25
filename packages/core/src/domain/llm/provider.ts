@@ -4,17 +4,18 @@ import { capabilitiesFor } from './capabilities'
 import { LlmClient, makeOllamaClient, type ChatMessage } from './llm-client'
 import type { StreamChunk } from './stream-chunk'
 import { emptyFoldState, foldDelta, parseOpenAiData } from './openai-parser'
-import { makeClaudeCodeProvider } from './claude-code-provider'
+import { makeCodexProvider } from './codex-provider'
 
-export type ProviderKind = 'ollama' | 'openai-compat' | 'claude-code'
+export type ProviderKind = 'ollama' | 'openai-compat' | 'codex'
 export interface ProviderTarget {
   providerKey: string
   kind: ProviderKind
   model: string
   baseUrl?: string
   apiKey?: string
-  /** claude-code only: "auto mode" — bypass the scoped tool allowlist (use any tool). */
+  /** codex only: "auto mode" — use full filesystem access instead of workspace-write. */
   bypassPermissions?: boolean
+  reportActions?: boolean
 }
 
 type Service = Context.Tag.Service<LlmClient>
@@ -52,12 +53,17 @@ export const toOpenAiMessages = (messages: ChatMessage[]): unknown[] =>
 
 const makeOpenAiCompat = (t: ProviderTarget): Service => ({
   chat: (messages, tools) =>
-    Stream.unwrap(
+    Stream.unwrapScoped(
       Effect.gen(function* () {
+        const controller = yield* Effect.acquireRelease(
+          Effect.sync(() => new AbortController()),
+          (controller) => Effect.sync(() => controller.abort()),
+        )
         const res = yield* Effect.tryPromise({
           try: () =>
             fetch(`${t.baseUrl}/chat/completions`, {
               method: 'POST',
+              signal: controller.signal,
               headers: {
                 'content-type': 'application/json',
                 authorization: `Bearer ${t.apiKey ?? ''}`,
@@ -126,15 +132,21 @@ const makeOpenAiCompat = (t: ProviderTarget): Service => ({
   detectCapabilities: () => Effect.succeed(capabilitiesFor(t.model)),
 })
 
-/** Build an LlmClient-shaped value for a target, selecting the impl by kind.
- *  `claude-code` is added in a later task; until then it throws (caught at the call site). */
+/** Build an LlmClient-shaped value for a target, selecting the impl by kind. */
 export const makeProvider = (t: ProviderTarget): Service => {
   switch (t.kind) {
     case 'ollama':
       return makeOllamaClient({ baseUrl: t.baseUrl ?? 'http://localhost:11434', model: t.model })
     case 'openai-compat':
       return makeOpenAiCompat(t)
-    case 'claude-code':
-      return makeClaudeCodeProvider(t.model, { bypassPermissions: t.bypassPermissions })
+    case 'codex':
+      return makeCodexProvider(t.model, {
+        bypassPermissions: t.bypassPermissions,
+        reportActions: t.reportActions,
+      })
+    default:
+      throw new Error(
+        'Unsupported provider kind; configure Codex with `timmy model askcodex default`.',
+      )
   }
 }

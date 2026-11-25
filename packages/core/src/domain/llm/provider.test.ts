@@ -7,6 +7,40 @@ import type { StreamChunk } from './stream-chunk'
 
 afterEach(() => vi.restoreAllMocks())
 
+itV.each(['openai-compat', 'ollama'] as const)(
+  '%s aborts the request when its stream is cancelled',
+  async (kind) => {
+    let signal: AbortSignal | undefined
+    const cancel = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      signal = init?.signal ?? undefined
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const line =
+              kind === 'ollama'
+                ? '{"message":{"content":"first"}}\n'
+                : 'data: {"choices":[{"delta":{"content":"first"}}]}\n'
+            controller.enqueue(new TextEncoder().encode(line))
+          },
+          cancel,
+        }),
+      )
+    })
+    const client = makeProvider({
+      providerKey: kind,
+      kind,
+      model: 'fixture',
+      baseUrl: 'http://fixture',
+    })
+    await Effect.runPromise(
+      client.chat([{ role: 'user', content: 'go' }]).pipe(Stream.take(1), Stream.runDrain),
+    )
+    expect(signal?.aborted).toBe(true)
+    expect(cancel).toHaveBeenCalledOnce()
+  },
+)
+
 describe('toOpenAiMessages (strict tool-call wire format)', () => {
   itV('maps an assistant tool_calls turn + a tool result to the OpenAI shape', () => {
     const msgs: ChatMessage[] = [

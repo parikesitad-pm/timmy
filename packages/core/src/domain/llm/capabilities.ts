@@ -38,7 +38,7 @@ export async function resolveModelCapabilities(
   }
 }
 
-/** Static capability lookup by model family — used for cloud + claude-code providers,
+/** Static capability lookup by model family — used for cloud providers,
  *  which (unlike Ollama's `/api/show`) expose no capability probe. Match by prefix. */
 export const capabilitiesFor = (model: string): DetectedCapabilities => {
   const m = model.toLowerCase()

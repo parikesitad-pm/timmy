@@ -13,12 +13,12 @@ describe('parseFrame (NDJSON line → frame)', () => {
   it('reads a confirm_required line as its own kind (handled interactively)', () => {
     expect(
       parseFrame(
-        '{"type":"confirm_required","id":"c1","tool":"askClaude","description":"run ls","always":{"scope":"tool","label":"x"}}',
+        '{"type":"confirm_required","id":"c1","tool":"askCodex","description":"run ls","always":{"scope":"tool","label":"x"}}',
       ),
     ).toEqual({
       kind: 'confirm',
       id: 'c1',
-      tool: 'askClaude',
+      tool: 'askCodex',
       description: 'run ls',
       always: { scope: 'tool', label: 'x' },
     })

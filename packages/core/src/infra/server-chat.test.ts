@@ -36,6 +36,42 @@ describe('POST /chat (NDJSON characterization)', () => {
     await runtime?.dispose()
   })
 
+  it('interrupts an in-flight provider when the response client disconnects', async () => {
+    let interrupted = false
+    const stream = Stream.concat(
+      Stream.succeed<StreamChunk>({ type: 'content', content: 'started' }),
+      Stream.never,
+    ).pipe(
+      Stream.ensuring(
+        Effect.sync(() => {
+          interrupted = true
+        }),
+      ),
+    )
+    runtime = ManagedRuntime.make(
+      Layer.succeed(
+        ChatService,
+        ChatService.of({
+          send: () => Effect.succeed({ threadId: 'cancelled', stream }),
+        }),
+      ),
+    )
+    app = await buildServer(TEST_CONFIG, runtime as never)
+    await app.listen({ host: '127.0.0.1', port: 0 })
+    const { port } = app.server.address() as AddressInfo
+    const controller = new AbortController()
+    const response = await fetch(`http://127.0.0.1:${port}/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'hi' }),
+      signal: controller.signal,
+    })
+    const reader = response.body?.getReader()
+    await reader?.read()
+    controller.abort()
+    await vi.waitFor(() => expect(interrupted).toBe(true))
+  })
+
   it('streams {thread_id} first, then each chunk, then {done:true}, with x-thread-id header', async () => {
     const chunks: StreamChunk[] = [
       { type: 'content', content: 'Hello' },

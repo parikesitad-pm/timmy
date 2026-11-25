@@ -199,6 +199,7 @@ export interface DefaultPlugin {
   readonly name: string
   readonly source: string
   readonly blurb: string
+  readonly platforms?: readonly NodeJS.Platform[]
 }
 
 /** The recommended set a fresh Timmy ships with — so a new install has capabilities, not an
@@ -206,6 +207,7 @@ export interface DefaultPlugin {
 export const DEFAULT_PLUGINS: readonly DefaultPlugin[] = [
   {
     name: 'machine',
+    platforms: ['darwin'],
     source: 'github:omatsetyadi/timmy-plugin-machine',
     blurb: 'control macOS apps — AppleScript, app focus, a script library',
   },
@@ -220,6 +222,9 @@ export const DEFAULT_PLUGINS: readonly DefaultPlugin[] = [
     blurb: 'run shell commands — runCommand, with a safety classifier',
   },
 ]
+
+export const recommendedPlugins = (platform = process.platform): readonly DefaultPlugin[] =>
+  DEFAULT_PLUGINS.filter((plugin) => !plugin.platforms || plugin.platforms.includes(platform))
 
 export interface DefaultInstallResult {
   readonly name: string

@@ -1,8 +1,9 @@
 import { Effect } from 'effect'
-import { spawn } from 'node:child_process'
-import { mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { once } from 'node:events'
+import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { pathToFileURL } from 'node:url'
 import {
   CONFIG_DIR,
   CONFIG_PATH,
@@ -11,8 +12,9 @@ import {
   readConfigSync,
 } from '../domain/config/config'
 import { ProviderRegistry } from '../domain/llm/provider-registry'
+import { codexAvailable } from '../domain/llm/codex-provider'
 import {
-  DEFAULT_PLUGINS,
+  recommendedPlugins,
   hasBuiltEntry,
   installDefaults,
   installFromGithub,
@@ -30,8 +32,8 @@ import {
   setFrontdeskConfig,
   setReasoningConfig,
   setVisionConfig,
-  setAskClaudeModel,
-  setAskClaudeBypass,
+  setAskCodexModel,
+  setAskCodexBypass,
   discoveredTargetIds,
   detectEnv,
   writeInitConfig,
@@ -43,11 +45,23 @@ import { profile } from './profile-cli'
 import { voice } from './voice-cli'
 import { buildRuntime } from './runtime'
 import { buildServer } from './server'
-import { isRunning, startBackground, stop, type DaemonPaths } from './daemon-supervisor'
+import {
+  isAlive,
+  isRunning,
+  readPid,
+  startBackground,
+  stop,
+  waitForExit,
+  type DaemonPaths,
+} from './daemon-supervisor'
 import { AUTOSTART_LABEL, disableAutostart, enableAutostart, isAutostartEnabled } from './autostart'
 import { isVoiceInstalled, startVoice, stopVoice } from './voice-lifecycle'
+import { followLog } from './log-follower'
+import { controlRecord, requestControl, startControl } from './daemon-control'
+import { setTimeout } from 'node:timers/promises'
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
+declare const TIMMY_COMPILED: boolean
 
 /** Core daemon pidfile + logfile (background-managed instances). */
 const CORE_PATHS: DaemonPaths = {
@@ -58,7 +72,8 @@ const CORE_PATHS: DaemonPaths = {
 /** Command to re-launch THIS program with extra args. Handles both `node dist/index.js …`
  *  (dev: argv[1] is the script) and a compiled single binary (argv[1] is the subcommand). */
 function relaunch(extra: string[]): { cmd: string; args: string[] } {
-  const selfIsScript = /\.(c?js|mjs|ts)$/.test(process.argv[1] ?? '')
+  const compiled = typeof TIMMY_COMPILED !== 'undefined' && TIMMY_COMPILED
+  const selfIsScript = !compiled && /\.(c?js|mjs|ts)$/.test(process.argv[1] ?? '')
   return selfIsScript
     ? { cmd: process.execPath, args: [process.argv[1], ...extra] }
     : { cmd: process.execPath, args: extra }
@@ -68,7 +83,20 @@ function relaunch(extra: string[]): { cmd: string; args: string[] } {
 async function start(args: readonly string[]): Promise<void> {
   if (args.includes('--foreground') || args.includes('-f')) return startForeground()
   const { cmd, args: relaunchArgs } = relaunch(['start', '--foreground'])
-  const r = startBackground(CORE_PATHS, cmd, relaunchArgs)
+  const r = await startBackground(CORE_PATHS, cmd, relaunchArgs, {
+    ready: async (pid) => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (!isAlive(pid)) throw new Error('Daemon exited before it was ready; check timmy logs')
+        const record = controlRecord(CONFIG_DIR)
+        if (record?.pid === pid) {
+          await requestControl(record, 'ping')
+          return
+        }
+        await setTimeout(100)
+      }
+      throw new Error('Daemon readiness timed out; check timmy logs')
+    },
+  })
   if ('alreadyRunning' in r) {
     console.log(`Timmy is already running (pid ${r.alreadyRunning}).`)
     return
@@ -78,34 +106,90 @@ async function start(args: readonly string[]): Promise<void> {
 
 /** Run the server in the foreground (the actual daemon body; what the detached child executes). */
 async function startForeground(): Promise<void> {
+  const existing = isRunning(CORE_PATHS)
+  if (existing !== null && existing !== process.pid)
+    throw new Error('A Timmy instance already owns this profile')
   const { runtime, config } = buildRuntime()
-  const app = await buildServer(config, runtime)
-  await app.listen({ host: config.server.host, port: config.server.port })
-  // Fastify's logger reports the listening address.
-
-  // One login item (core); voice follows it. If the user enabled voice.autostart and voice is
-  // installed, bring the voice daemon up as core's child. Best-effort — never block core on it.
-  if (config.voice.autostart && isVoiceInstalled()) {
-    const r = startVoice()
-    if ('started' in r) app.log.info({ pid: r.started }, 'voice started (autostart)')
-    else if ('alreadyRunning' in r) app.log.info({ pid: r.alreadyRunning }, 'voice already running')
+  const shutdownPath = join(CONFIG_DIR, 'shutdown.json')
+  rmSync(shutdownPath, { force: true })
+  let app: Awaited<ReturnType<typeof buildServer>> | undefined
+  let closeControl: (() => Promise<void>) | undefined
+  let ownedVoice: number | undefined
+  let closing: Promise<void> | undefined
+  const shutdown = (): Promise<void> =>
+    (closing ??= (async () => {
+      const errors: unknown[] = []
+      const cleanups = [
+        async () => {
+          if (ownedVoice !== undefined) await stopVoice()
+        },
+        () => app?.close(),
+        () => runtime.dispose(),
+        () => closeControl?.(),
+      ]
+      for (const cleanup of cleanups) {
+        try {
+          await cleanup()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      mkdirSync(CONFIG_DIR, { recursive: true })
+      writeFileSync(shutdownPath, JSON.stringify({ pid: process.pid, ok: errors.length === 0 }), {
+        mode: 0o600,
+      })
+      if (readPid(CORE_PATHS.pidFile) === process.pid) rmSync(CORE_PATHS.pidFile, { force: true })
+      if (errors.length) throw new AggregateError(errors, 'Daemon cleanup failed')
+    })())
+  const onSignal = (): void => {
+    void (async () => {
+      try {
+        await shutdown()
+      } catch (error) {
+        console.error(error)
+        process.exitCode = 1
+      }
+    })()
   }
-
-  const shutdown = async (sig: string): Promise<void> => {
-    app.log.info({ sig }, 'shutting down')
-    stopVoice() // bring voice down with core (no-op if it isn't running)
-    await app.close()
-    await runtime.dispose()
-    process.exit(0)
+  try {
+    app = await buildServer(config, runtime)
+    process.once('SIGINT', onSignal)
+    process.once('SIGTERM', onSignal)
+    await app.listen({ host: config.server.host, port: config.server.port })
+    mkdirSync(CONFIG_DIR, { recursive: true })
+    closeControl = await startControl(CONFIG_DIR, shutdown)
+    writeFileSync(CORE_PATHS.pidFile, String(process.pid))
+    if (config.voice.autostart && isVoiceInstalled()) {
+      const result = await startVoice()
+      if ('started' in result) ownedVoice = result.started
+      else if ('unsupportedPlatform' in result)
+        app.log.warn('Voice audio is unsupported on this platform; text chat is available')
+    }
+  } catch (error) {
+    await shutdown()
+    throw error
   }
-  process.once('SIGINT', () => void shutdown('SIGINT'))
-  process.once('SIGTERM', () => void shutdown('SIGTERM'))
 }
 
-/** `timmy stop` — signal the background daemon and clean up its pidfile. */
-function stopDaemon(): void {
-  const r = stop(CORE_PATHS)
-  console.log('stopped' in r ? `Timmy stopped (pid ${r.stopped}).` : 'Timmy is not running.')
+async function stopDaemon(args: readonly string[]): Promise<void> {
+  const pid = isRunning(CORE_PATHS)
+  if (pid === null) return void console.log('Timmy is not running.')
+  if (args.includes('--force')) {
+    await stop(CORE_PATHS)
+    console.log('Timmy was forcibly terminated; graceful cleanup was not guaranteed.')
+    return
+  }
+  const record = controlRecord(CONFIG_DIR)
+  if (!record || record.pid !== pid)
+    throw new Error('No matching control record; use stop --force only for a known legacy instance')
+  await requestControl(record, 'stop')
+  await waitForExit(pid, 10_000)
+  const receiptPath = join(CONFIG_DIR, 'shutdown.json')
+  const receipt = existsSync(receiptPath) ? JSON.parse(readFileSync(receiptPath, 'utf8')) : null
+  if (receipt?.pid !== pid || receipt.ok !== true)
+    throw new Error('Daemon exited without confirming graceful cleanup')
+  if (readPid(CORE_PATHS.pidFile) === pid) rmSync(CORE_PATHS.pidFile, { force: true })
+  console.log('Timmy stopped after graceful cleanup.')
 }
 
 /** `timmy autostart on|off|status` — manage the launch-on-login agent (macOS LaunchAgent). */
@@ -119,8 +203,8 @@ function autostart(args: readonly string[]): void {
     console.log(isAutostartEnabled() ? 'Autostart: on (runs at login)' : 'Autostart: off')
     return
   }
-  if (process.platform !== 'darwin') {
-    console.error('autostart is macOS-only for now (Linux systemd support is planned).')
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    console.error('Autostart supports Windows Task Scheduler and macOS LaunchAgent.')
     process.exit(1)
   }
   if (sub === 'off') {
@@ -139,16 +223,31 @@ function autostart(args: readonly string[]): void {
 }
 
 /** `timmy logs [-f]` — print the daemon log; `-f` follows it (via `tail -f`). */
-function logs(args: readonly string[]): void {
+async function logs(args: readonly string[]): Promise<void> {
+  if (args.includes('-f') || args.includes('--follow')) {
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    process.once('SIGINT', cancel)
+    process.once('SIGTERM', cancel)
+    try {
+      await followLog(
+        CORE_PATHS.logFile,
+        async (text) => {
+          if (!process.stdout.write(text)) await once(process.stdout, 'drain')
+        },
+        controller.signal,
+      )
+    } finally {
+      process.removeListener('SIGINT', cancel)
+      process.removeListener('SIGTERM', cancel)
+    }
+    return
+  }
   if (!existsSync(CORE_PATHS.logFile)) {
     console.log('No logs yet — start Timmy first (timmy start).')
     return
   }
-  if (args.includes('-f') || args.includes('--follow')) {
-    spawn('tail', ['-f', CORE_PATHS.logFile], { stdio: 'inherit' })
-  } else {
-    process.stdout.write(readFileSync(CORE_PATHS.logFile, 'utf8'))
-  }
+  process.stdout.write(readFileSync(CORE_PATHS.logFile, 'utf8'))
 }
 
 async function status(): Promise<void> {
@@ -327,6 +426,16 @@ async function model(args: readonly string[]): Promise<void> {
         console.error('Usage: timmy model use <provider>/<model>')
         process.exit(1)
       }
+      if (target.startsWith('codex/') && target.length > 'codex/'.length) {
+        if (!(await Effect.runPromise(codexAvailable)))
+          throw new Error(
+            'Codex native CLI is unavailable or signed out. Run codex login; CODEX_PATH can select the native executable.',
+          )
+        setAskCodexModel(target.slice('codex/'.length))
+        setFrontdeskConfig('codex', target.slice('codex/'.length))
+        console.log(`frontdesk → ${target}   (restart Timmy to apply)`)
+        return
+      }
       const ids = await runtime.runPromise(discoveredTargetIds)
       if (!ids.includes(target)) {
         console.error(
@@ -366,15 +475,15 @@ async function model(args: readonly string[]): Promise<void> {
       // gracefully at use time (answers "can't" → delegate) rather than gating config here.
       setVisionConfig(target)
       console.log(`vision model → ${target}   (restart Timmy to apply)`)
-    } else if (sub === 'askclaude') {
-      const claudeModel = args[1]
-      if (!claudeModel) {
-        console.error('Usage: timmy model askclaude <claude-model>   (e.g. claude-opus-4-8)')
+    } else if (sub === 'askcodex') {
+      const codexModel = args[1]
+      if (!codexModel) {
+        console.error('Usage: timmy model askcodex <codex-model>   (e.g. default)')
         process.exit(1)
       }
-      setAskClaudeModel(claudeModel)
+      setAskCodexModel(codexModel)
       console.log(
-        `askClaude model → ${claudeModel}   (restart Timmy; needs Claude Code installed + logged in)`,
+        `askCodex model → ${codexModel}   (restart Timmy; needs Codex installed + logged in)`,
       )
     } else if (sub === 'auto') {
       const v = args[1]
@@ -382,15 +491,15 @@ async function model(args: readonly string[]): Promise<void> {
         console.error('Usage: timmy model auto <on|off>')
         process.exit(1)
       }
-      setAskClaudeBypass(v === 'on')
+      setAskCodexBypass(v === 'on')
       console.log(
         v === 'on'
-          ? 'askClaude auto-mode ON — Claude Code may use ANY tool, no allowlist   (restart Timmy)'
-          : 'askClaude auto-mode OFF — scoped allowlist (Read/Glob/Grep/Bash/Edit/Write)   (restart Timmy)',
+          ? 'askCodex auto-mode ON — Codex runs with full filesystem access   (restart Timmy)'
+          : 'askCodex auto-mode OFF — workspace-write sandbox   (restart Timmy)',
       )
     } else {
       console.error(
-        'Usage: timmy model <set-key <provider> | use <provider>/<model> | reasoning <provider>/<model>|--clear | vision <provider>/<model> | askclaude <claude-model> | auto <on|off> | status | refresh>',
+        'Usage: timmy model <set-key <provider> | use <provider>/<model> | reasoning <provider>/<model>|--clear | vision <provider>/<model> | askcodex <codex-model> | auto <on|off> | status | refresh>',
       )
       process.exit(1)
     }
@@ -463,8 +572,10 @@ async function chat(args: readonly string[]): Promise<void> {
   const threadArg = i >= 0 ? args[i + 1] : undefined
   // The Ink TUI ships as a tsup ESM bundle (Ink is ESM-only w/ top-level await; a static import
   // would crash the CJS build). Load it via dynamic import() at runtime.
-  const appModule = './chat-tui/app.mjs'
-  const { runChat } = (await import(appModule)) as typeof import('./chat-tui/app')
+  const appModule = new URL('./chat-tui/app.mjs', pathToFileURL(__filename)).href
+  const { runChat } = (globalThis as { Bun?: unknown }).Bun
+    ? await import('./chat-tui/app.js')
+    : ((await import(appModule)) as typeof import('./chat-tui/app'))
   await runChat({ threadArg })
 }
 
@@ -487,11 +598,10 @@ async function init(): Promise<void> {
     console.log(
       `  Ollama:      ${env.ollamaModels.length ? env.ollamaModels.join(', ') : 'not reachable on localhost:11434'}`,
     )
-    console.log(
-      `  Claude Code: ${env.claudeAuthed ? 'logged in (askClaude available)' : 'not detected'}`,
-    )
+    console.log(`  Codex: ${env.codexAuthed ? 'logged in (askCodex available)' : 'not detected'}`)
 
     const options = env.ollamaModels.map((m) => `ollama/${m}`)
+    if (env.codexAuthed) options.push('codex/default')
     console.log('\nPick a frontdesk model:')
     options.forEach((o, i) => console.log(`  [${i + 1}] ${o}`))
     console.log(`  [c]  a cloud model (I'll ask for an API key)`)
@@ -511,7 +621,7 @@ async function init(): Promise<void> {
       if (key) await runtime.runPromise(setKey(provider, key))
       choices = {
         frontdesk: { provider, model },
-        claudeAuthed: env.claudeAuthed,
+        codexAuthed: env.codexAuthed,
         cloudProvider: provider,
       }
     } else {
@@ -523,7 +633,7 @@ async function init(): Promise<void> {
       const slash = sel.indexOf('/')
       choices = {
         frontdesk: { provider: sel.slice(0, slash), model: sel.slice(slash + 1) },
-        claudeAuthed: env.claudeAuthed,
+        codexAuthed: env.codexAuthed,
       }
     }
     // Track what's already configured so the reasoning/optional steps don't re-ask for it.
@@ -531,7 +641,7 @@ async function init(): Promise<void> {
       [
         choices.frontdesk.provider,
         choices.cloudProvider,
-        choices.claudeAuthed ? 'claude_code' : undefined,
+        choices.codexAuthed ? 'codex' : undefined,
       ].filter((p): p is string => Boolean(p)),
     )
     const extraProviders: string[] = []
@@ -543,16 +653,16 @@ async function init(): Promise<void> {
       }
     }
 
-    // ── #3 Reasoning provider (askClaude) — Claude Code is the agentic reasoning engine when
-    //    authed; an Anthropic key is the fallback (askModel / when Claude Code is unavailable).
-    //    'anthropic' base_url auto-resolves at boot.
-    console.log('\n─── Reasoning provider (askClaude) ───')
+    // ── #3 Reasoning provider (askCodex) — Codex is the agentic reasoning engine when
+    //    authed; an OpenAI API key is the fallback (askModel / when Codex is unavailable).
+    //    'openai' base_url auto-resolves at boot.
+    console.log('\n─── Reasoning provider (askCodex) ───')
     console.log(
-      env.claudeAuthed
-        ? '  ✓ Claude Code — your agentic reasoning engine (askClaude). Add an Anthropic key as a fallback?'
-        : '  Claude Code not detected — reasoning uses your frontdesk model. Add an Anthropic key for reasoning?',
+      env.codexAuthed
+        ? '  ✓ Codex — your agentic reasoning engine (askCodex). Add an OpenAI API key as a fallback?'
+        : '  Codex not detected — reasoning uses your frontdesk model. Add an OpenAI API key for reasoning?',
     )
-    await addProvider('anthropic', await ask('  Anthropic API key (Enter to skip): '))
+    await addProvider('openai', await ask('  OpenAI API key (Enter to skip): '))
 
     // ── #4 Optional providers — extra cloud keys for frontdesk-switching / reasoning fallback.
     console.log('\n─── Optional providers ───')
@@ -570,22 +680,23 @@ async function init(): Promise<void> {
     const extraNote = extraProviders.length ? ` · +${extraProviders.join(', ')}` : ''
     console.log(
       `\n✓ wrote ~/.timmy/config.yaml — frontdesk ${choices.frontdesk.provider}/${choices.frontdesk.model}` +
-        (env.claudeAuthed ? ' · claude_code enabled (askClaude)' : '') +
+        (env.codexAuthed ? ' · codex enabled (askCodex)' : '') +
         extraNote,
     )
 
     // Default plugins — so a fresh Timmy has hands, not an empty brain. Optional, and
     // continue-on-failure: the config above is already written, so a clone/build hiccup on one
     // plugin never aborts setup. Each install reuses the exact `plugin install` github path.
-    const names = DEFAULT_PLUGINS.map((p) => p.name).join(', ')
+    const defaults = recommendedPlugins()
+    const names = defaults.map((p) => p.name).join(', ')
     console.log(`\nRecommended plugins (${names}):`)
-    DEFAULT_PLUGINS.forEach((p) => console.log(`  • ${p.name} — ${p.blurb}`))
+    defaults.forEach((p) => console.log(`  • ${p.name} — ${p.blurb}`))
     const wantPlugins = await ask('Install them now? (clones + builds each) (Y/n) ')
     if (wantPlugins.toLowerCase() !== 'n') {
       const pluginsDir = join(CONFIG_DIR, 'plugins')
       mkdirSync(pluginsDir, { recursive: true })
       const results = await installDefaults(
-        DEFAULT_PLUGINS,
+        defaults,
         async (p) => {
           const dir = await installFromGithub(p.source, pluginsDir)
           await reportInstalled(pluginsDir, dir)
@@ -621,7 +732,7 @@ Core:
   start [--foreground|-f]            Start the daemon in the background (-f runs it inline, for dev)
   stop                               Stop the background daemon
   logs [-f]                          Print the daemon log (-f to follow)
-  autostart <on|off|status>          Start Timmy at login (macOS LaunchAgent)
+  autostart <on|off|status>          Start Timmy at login (Windows/macOS)
   chat [--thread <id>]               Interactive terminal chat with the running daemon
   status                             Check whether the running daemon is reachable
   help, --help, -h                   Show this help
@@ -638,8 +749,8 @@ Models (cloud + local LLM providers):
   model use <provider>/<model>       Set the frontdesk model (validated against discovered)
   model reasoning <provider>/<model> Set the askModel default target (or --clear)
   model vision <provider>/<model>    Set the askVision model (e.g. ollama/llava)
-  model askclaude <claude-model>     Set the model askClaude runs (e.g. claude-opus-4-8)
-  model auto <on|off>                Toggle askClaude auto-mode (any tool, no allowlist)
+  model askcodex <codex-model>       Set the model askCodex runs (e.g. default)
+  model auto <on|off>                Toggle askCodex auto-mode (full filesystem access)
   model status                       Show providers, discovered models, frontdesk + reasoning
   model list                         Alias of \`model status\`
   model refresh                      Re-run model auto-discovery
@@ -682,33 +793,38 @@ Voice (settings for the voice daemon; language uses profile's assistant language
   voice openai <voice|model|instructions> <value>   OpenAI TTS settings (when engine=openai)
   voice status                       Show the effective voice config
 
-  Note: askClaude (agentic Claude Code) needs the \`claude\` CLI installed + logged in
-  (\`claude auth status\`; \`model status\` shows availability + auto-mode state).
+  Note: askCodex (agentic Codex) needs the \`codex\` CLI installed + logged in
+  (\`codex login status\`; \`model status\` shows availability + auto-mode state).
 
 Config: ~/.timmy/config.yaml   ·   Plugins: ~/.timmy/plugins/`)
 }
 
-export function run(): void {
-  const cmd = process.argv[2]
-  if (cmd === 'start') void start(process.argv.slice(3))
-  else if (cmd === 'stop') stopDaemon()
-  else if (cmd === 'logs') logs(process.argv.slice(3))
-  else if (cmd === 'autostart') autostart(process.argv.slice(3))
-  else if (cmd === 'init') void init()
-  else if (cmd === 'chat') void chat(process.argv.slice(3))
-  else if (cmd === 'status') void status()
-  else if (cmd === 'plugin') void plugin(process.argv.slice(3))
-  else if (cmd === 'model') void model(process.argv.slice(3))
-  else if (cmd === 'permission') permission(process.argv.slice(3))
-  else if (cmd === 'memory') void memory(process.argv.slice(3))
-  else if (cmd === 'profile') profile(process.argv.slice(3))
-  else if (cmd === 'voice') void voice(process.argv.slice(3))
-  else if (cmd === 'yolo') yolo(process.argv.slice(3))
-  else if (cmd === 'version' || cmd === '--version' || cmd === '-v')
-    console.log(`Timmy v${VERSION}`)
-  else if (cmd === 'help' || cmd === '--help' || cmd === '-h' || cmd === undefined) printHelp()
-  else {
-    console.error(`Unknown command: ${cmd}\nRun \`timmy help\` to see available commands.`)
-    process.exit(1)
+export async function run(): Promise<void> {
+  try {
+    const cmd = process.argv[2]
+    if (cmd === 'start') await start(process.argv.slice(3))
+    else if (cmd === 'stop') await stopDaemon(process.argv.slice(3))
+    else if (cmd === 'logs') await logs(process.argv.slice(3))
+    else if (cmd === 'autostart') autostart(process.argv.slice(3))
+    else if (cmd === 'init') await init()
+    else if (cmd === 'chat') await chat(process.argv.slice(3))
+    else if (cmd === 'status') await status()
+    else if (cmd === 'plugin') await plugin(process.argv.slice(3))
+    else if (cmd === 'model') await model(process.argv.slice(3))
+    else if (cmd === 'permission') permission(process.argv.slice(3))
+    else if (cmd === 'memory') await memory(process.argv.slice(3))
+    else if (cmd === 'profile') profile(process.argv.slice(3))
+    else if (cmd === 'voice') await voice(process.argv.slice(3))
+    else if (cmd === 'yolo') yolo(process.argv.slice(3))
+    else if (cmd === 'version' || cmd === '--version' || cmd === '-v')
+      console.log(`Timmy v${VERSION}`)
+    else if (cmd === 'help' || cmd === '--help' || cmd === '-h' || cmd === undefined) printHelp()
+    else {
+      console.error(`Unknown command: ${cmd}\nRun \`timmy help\` to see available commands.`)
+      process.exit(1)
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'Command failed')
+    process.exitCode = 1
   }
 }

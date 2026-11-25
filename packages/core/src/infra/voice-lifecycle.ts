@@ -36,7 +36,7 @@ export const isVoiceInstalled = (dir = VOICE_DIR): boolean =>
 /** Is a CLI tool present on PATH? (`<tool> --version` exits 0). */
 const hasTool = (tool: string): boolean => {
   try {
-    execFileSync(tool, ['--version'], { stdio: 'ignore' })
+    execFileSync(tool, ['--version'], { stdio: 'ignore', windowsHide: true, timeout: 3000 })
     return true
   } catch {
     return false
@@ -46,13 +46,67 @@ const hasTool = (tool: string): boolean => {
 export interface Preflight {
   python: boolean
   uv: boolean
+  git: boolean
+  supported: boolean
+  pythonPath?: string
 }
 /** What's present for a voice install. `python3` ≥ 3.11 and `uv` are required. */
-export const preflight = (): Preflight => ({ python: hasTool('python3'), uv: hasTool('uv') })
+export const supportsPython = (version: string): boolean => {
+  const match = /^(\d+)\.(\d+)/.exec(version.trim())
+  return !!match && (Number(match[1]) > 3 || (Number(match[1]) === 3 && Number(match[2]) >= 11))
+}
+
+export const preflight = (): Preflight => {
+  const candidates =
+    process.platform === 'win32'
+      ? [['py', '-3'], ['python'], ['python3']]
+      : [['python3'], ['python']]
+  let pythonPath: string | undefined
+  for (const [command, ...args] of candidates) {
+    try {
+      const output = execFileSync(
+        command,
+        [
+          ...args,
+          '-c',
+          'import sys; print(str(sys.version_info.major)+"."+str(sys.version_info.minor)); print(sys.executable)',
+        ],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 3000,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      )
+        .trim()
+        .split(/\r?\n/)
+      if (!supportsPython(output[0])) continue
+      pythonPath = output[1]
+      break
+    } catch {
+      /* Try the next native launcher. */
+    }
+  }
+  return {
+    python: !!pythonPath,
+    pythonPath,
+    uv: hasTool('uv'),
+    git: hasTool('git'),
+    supported: process.platform === 'darwin',
+  }
+}
 
 export type InstallResult =
   | { ok: true }
-  | { ok: false; reason: 'already-installed' | 'missing-python' | 'missing-uv' }
+  | {
+      ok: false
+      reason:
+        | 'already-installed'
+        | 'missing-python'
+        | 'missing-uv'
+        | 'missing-git'
+        | 'unsupported-platform'
+    }
 
 /**
  * Clone timmy-voice → {@link VOICE_DIR} and `uv sync`. Returns a structured reason instead of
@@ -62,22 +116,31 @@ export type InstallResult =
 export const installVoice = (): InstallResult => {
   if (isVoiceInstalled()) return { ok: false, reason: 'already-installed' }
   const pre = preflight()
-  if (!pre.python) return { ok: false, reason: 'missing-python' }
+  if (!pre.supported) return { ok: false, reason: 'unsupported-platform' }
+  if (!pre.pythonPath) return { ok: false, reason: 'missing-python' }
   if (!pre.uv) return { ok: false, reason: 'missing-uv' }
+  if (!pre.git) return { ok: false, reason: 'missing-git' }
   execFileSync('git', ['clone', '--depth', '1', VOICE_REPO_URL, VOICE_DIR], { stdio: 'inherit' })
   // `--extra voice` pulls the real-audio stack (STT/TTS/wake/AEC/tray); plain `uv sync` installs only
   // the light backbone, leaving the daemon unable to actually listen or speak.
-  execFileSync('uv', ['sync', '--extra', 'voice'], { cwd: VOICE_DIR, stdio: 'inherit' })
+  execFileSync('uv', ['sync', '--extra', 'voice', '--python', pre.pythonPath], {
+    cwd: VOICE_DIR,
+    stdio: 'inherit',
+    windowsHide: true,
+  })
   return { ok: true }
 }
 
 /** Start the voice daemon in the background (no-op if already running; errors if not installed). */
-export const startVoice = (): StartResult | { notInstalled: true } => {
+export const startVoice = async (): Promise<
+  StartResult | { notInstalled: true } | { unsupportedPlatform: true }
+> => {
+  if (process.platform !== 'darwin') return { unsupportedPlatform: true }
   if (!isVoiceInstalled()) return { notInstalled: true }
   return startBackground(VOICE_PATHS, VOICE_RUN.cmd, VOICE_RUN.args, { cwd: VOICE_DIR })
 }
 
-export const stopVoice = (): StopResult => stop(VOICE_PATHS)
+export const stopVoice = (): Promise<StopResult> => stop(VOICE_PATHS)
 
 export interface VoiceLifecycleStatus {
   installed: boolean

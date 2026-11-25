@@ -76,14 +76,14 @@ providers:
     expect(effectiveProviders(readConfigSync(declared)).ollama.base_url).toBe('http://remote:11434')
   })
 
-  it('parses claude_code model + bypass_permissions ("auto mode") toggle', () => {
+  it('parses codex model + bypass_permissions ("auto mode") toggle', () => {
     const path = writeCfg(`
 providers:
-  claude_code: { kind: claude-code, model: claude-opus-4-8, bypass_permissions: true }
+  codex: { kind: codex, model: claude-opus-4-8, bypass_permissions: true }
 `)
     const cfg = readConfigSync(path)
-    expect(cfg.providers?.claude_code.model).toBe('claude-opus-4-8')
-    expect(cfg.providers?.claude_code.bypass_permissions).toBe(true)
+    expect(cfg.providers?.codex.model).toBe('claude-opus-4-8')
+    expect(cfg.providers?.codex.bypass_permissions).toBe(true)
   })
 })
 

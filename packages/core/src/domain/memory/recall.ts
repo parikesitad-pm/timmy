@@ -80,6 +80,7 @@ export class Recall extends Context.Tag('timmy/memory/recall')<Recall, RecallImp
         Effect.gen(function* () {
           const cfg = yield* config.get
           const all = yield* store.list()
+          if (all.length === 0) return { block: '', entityNames: [] as string[] }
           const alwaysOn = yield* store.byKinds(cfg.memory.always_kinds)
 
           const vec = yield* embedder.embed(message)
@@ -113,6 +114,7 @@ export class Recall extends Context.Tag('timmy/memory/recall')<Recall, RecallImp
       const search = (query: string, limit: number) =>
         Effect.gen(function* () {
           const all = yield* store.list()
+          if (all.length === 0) return [] as Entity[]
           const vec = yield* embedder.embed(query)
           if (vec) {
             const cands = all

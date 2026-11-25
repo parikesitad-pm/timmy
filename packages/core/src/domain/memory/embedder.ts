@@ -60,6 +60,7 @@ export class Embedder extends Context.Tag('timmy/memory/embedder')<Embedder, Emb
     Effect.gen(function* () {
       const cfg = yield* (yield* Config).get
       const model = cfg.models.embedding ?? DEFAULT_EMBED_MODEL
+      if (model === 'none') return makeEmbedder(() => Promise.resolve(null))
       return makeEmbedder(localEmbedFn(model))
     }),
   )
