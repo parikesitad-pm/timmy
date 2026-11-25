@@ -15,6 +15,18 @@ from timmy_voice_windows.settings import settings
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_voice_auth_is_never_sent_to_a_remote_http_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "config.yaml")
+            for server in ("{host: example.com, port: 3737}", "{host: localhost, port: '3737@remote.example'}"):
+                path.write_text("server: " + server, encoding="utf-8")
+                with patch.dict("os.environ", {"TIMMY_HOME": directory}):
+                    with self.assertRaises(ValueError):
+                        settings()
+            path.write_text("server: {host: '::1', port: 3737}", encoding="utf-8")
+            with patch.dict("os.environ", {"TIMMY_HOME": directory}):
+                self.assertEqual(settings()["url"], "http://[::1]:3737")
+
     def test_wake_chime_uses_real_audio_output_and_stays_within_pcm_range(self):
         audio = chime_samples()
         self.assertEqual(audio.dtype, np.float32)

@@ -20,14 +20,19 @@ def settings():
         import keyring
 
         token = keyring.get_password("timmy", "server:auth_token")
-    host = server.get("host", "127.0.0.1")
-    if host == "0.0.0.0":
-        host = "127.0.0.1"
+    hosts = {
+        "127.0.0.1": "http://127.0.0.1", "localhost": "http://localhost",
+        "::1": "http://[::1]", "0.0.0.0": "http://127.0.0.1", "::": "http://[::1]",
+    }
+    base = hosts.get(server.get("host", "127.0.0.1"))
+    port = server.get("port", 3737)
+    if base is None or type(port) is not int or not 0 < port < 65536:
+        raise ValueError("Windows voice requires a local core and a valid numeric port")
     language = config.get("assistant", {}).get("language", {}).get("conversation", "auto")
     voice = config.get("voice", {})
     return {
         "home": profile_home(),
-        "url": f"http://{host}:{server.get('port', 3737)}",
+        "url": f"{base}:{port}",
         "token": token,
         "model": voice.get("stt", {}).get("model", "base"),
         "language": None if language == "auto" else language,
