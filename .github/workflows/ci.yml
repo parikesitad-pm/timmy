@@ -14,7 +14,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      TIMMY_HOME: ${{ runner.temp }}/timmy-unit-profile
+      TIMMY_HOME: ${{ github.workspace }}/.timmy-pilot/unit-profile
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
