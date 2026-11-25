@@ -11,7 +11,7 @@ Native background readiness, authenticated control, graceful shutdown and curren
 - [x] GN-04.01 - Handle spawn errors, windowsHide, parent log-handle closure, startup lock, PID ownership and authenticated readiness.
 - [x] GN-04.02 - Implement random-token local control; Windows named pipe and short mode-600 Unix socket call the shared shutdown path.
 - [x] GN-04.03 - Wait for exit and matching successful cleanup receipt; explicit force mode reports its limitation.
-- [x] GN-04.04 - Stop only a voice process started by core, interrupt provider streams, close HTTP/WebSocket transport and dispose SQLite/runtime. Native Windows voice is explicitly unsupported, so real audio-child acceptance stays in GN-05.05.
+- [x] GN-04.04 - Stop only a voice process started by core, interrupt provider streams, close HTTP/WebSocket transport and dispose SQLite/runtime. The GN-09 Windows backend now has actual core-owned voice startup, authenticated graceful stop, mic/SAPI cleanup and repeated restart evidence. Login-trigger acceptance stays separate.
 - [x] GN-04.05 - Register per-profile current-user Limited/Interactive tasks using absolute paths, saved cwd, safe argument quoting and hidden PowerShell.
 - [ ] GN-04.06 - Automated start/repeated-start/status/stop/repeated-stop/restart/occupied-port/missing-exe/readiness-failure and scheduled task on/off/status/explicit launch pass. [Actual sign-in acceptance remains parked](../parked/gn-04-login-acceptance.md).
 

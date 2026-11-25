@@ -13,9 +13,13 @@ Produce a native Windows x64 executable, checksums, installer and reviewable not
 - [x] GN-07.03 - PowerShell installer verifies Get-FileHash SHA-256 before mutation; spaced paths, managed update/uninstall and profile preservation pass.
 - [ ] GN-07.04 - Version/init/foreground/chat/history/background/stop/TUI/log/Ctrl+C pass with Node absent from app PATH on this host. [Clean Windows VM acceptance remains parked](../parked/gn-07-clean-machine.md).
 - [x] GN-07.05 - 0.2.0 executable, checksums, install.ps1, changelog and Windows usage notes prepared. No tag/release published.
+- [ ] GN-07.07 - [Hosted macOS artifact acceptance](../parked/gn-07-macos-artifact.md) is blocked on GitHub runner capacity.
+- [ ] GN-07.06 - [Remaining draft PR quality review](../parked/gn-07-review-findings.md): duplication gate and concrete automatic-review findings remain separate from passing runtime CI.
 
 ## Output, completion and verification
 
 `release/timmy-windows-x64.exe` is approximately 113.4 MiB. Matching per-asset checksum and SHA256SUMS are generated; checksum-merging script verifies assets before joining records. Production bundling excludes Ink development tools and preserves the real console UI. Native console and lifecycle fixture tests pass without Node in the child PATH, including cancellation and busy stop. Installer mismatch/update/uninstall tests pass.
 
 Completion still requires GN-06 hosted jobs, GN-07.02 optional-native verification and GN-07.04 clean-machine acceptance. Next action: verify hosted builds and provide the local runnable installation. [Windows guide](../docs/WINDOWS.md), [validation](validation.md), [pilot](../pilot.md).
+
+Windows hosted binary/installer job passes on 6c5590d. [Hosted macOS acceptance](../parked/gn-07-macos-artifact.md) is parked because GitHub cancelled its unacquired arm64 runner under capacity constraints. The final Windows executable and embedded voice sources are installed and running locally; real Jarvis wake/cue/reply with no terminal/window is confirmed. Full Desktop filesystem access is also verified with a removed temporary marker. Release publication and merge remain unperformed.

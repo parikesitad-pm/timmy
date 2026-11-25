@@ -1,49 +1,39 @@
-﻿# GN-09 - Windows hands-free Hey Jarvis
+﻿# GN-09 - Windows hands-free Jarvis
 
-Status: in-progress. Authorized by dap on 25 November 2026. Dependency: verified Windows core and native Codex chat (GN-02/GN-07). Vesper/GN-08 stays parked until dap can test Hey Jarvis live.
+Status: done. Verified 25 November 2026 at implementation revision 7406534. Dependencies: GN-02 verified core/chat and GN-07 verified local/hosted Windows executable. Vesper remains parked by dap's explicit instruction.
 
 ## Goal and scope
 
-Deliver a real Windows microphone -> Hey Jarvis detector -> speech recognition -> core/Codex -> spoken response. Keep macOS on its existing upstream voice backend. Use CPU defaults and preserve the working text daemon.
+Windows microphone -> Hey/Hi Jarvis -> speech recognition -> native Codex/core -> audible response, without an open terminal or visible CMD window. CPU defaults; preserve the existing profile/history and macOS upstream backend. Full-duplex AEC and Linux voice are outside this Windows implementation.
 
 ## Tasks
 
-- [x] GN-09.01 - Implement a Windows voice package using native audio capture, ONNX wake detection, CPU/int8 speech recognition and Windows SAPI output.
-- [x] GN-09.02 - Install pinned dependencies/models with managed Python 3.12; preserve system Python 3.15.
-- [x] GN-09.03 - Integrate package installation, authenticated readiness, graceful stop and core-owned voice lifecycle into CLI/standalone builds.
-- [x] GN-09.04 - Verify actual microphone availability, speech output, wake/STT inference, core response and resource use. Keep synthetic inference evidence distinct from live user speech.
-- [x] GN-09.05 - Start the installed hands-free service and have dap test Hey Jarvis. Record detection/turn/cleanup evidence without storing raw microphone audio or transcripts.
-- [ ] GN-09.06 - Run regression/hosted checks and synchronize same-project pilot/plans/parked records.
+- [x] GN-09.01 - Implement native capture, ONNX neural wake plus speech-verified Jarvis fallback, CPU/int8 Whisper and SAPI output. The two-note PCM cue uses SAPI's audio path as well.
+- [x] GN-09.02 - Install frozen uv.lock dependencies and models with uv 0.13.10 / managed Python 3.12.16; system Python 3.15 is preserved.
+- [x] GN-09.03 - Embed source/lockfile in the standalone executable; install/repair without removing cached models; authenticated readiness/stop; actual interpreter PID ownership; core-owned startup and graceful mic/speech cleanup.
+- [x] GN-09.04 - Verify real microphone availability, actual inference and speech output, synthetic post-chime command capture, resource use and core replies. Keep synthetic evidence distinct from live acceptance.
+- [x] GN-09.05 - Dap confirmed live chime + spoken answer with CMD/PowerShell closed and no window appearing. Latest explicit confirmation supersedes earlier partial results and accidental button selections.
+- [x] GN-09.06 - Build/typecheck/lint, JS/SDK/Python regressions, hosted Windows/Ubuntu matrix, hosted Windows executable/installer, installed-file identity and same-project documentation synchronized.
+- [x] GN-09.07 - Pass Codex bypass_permissions to the main provider as well as askCodex; test true/false; apply dap's full-access grant. Actual native Codex wrote a temporary Desktop marker outside the workspace; host verified it and removed it. No other Desktop files were inspected. Screen/mouse automation is not installed.
 
 ## Output and completion criteria
 
-Working installed voice runtime and reproducible tests. Completion requires actual wake detection and a spoken response confirmed by dap; configuration labels and model import alone are insufficient. No custom hi-vesper model or product rename in this stage.
+Timmy 0.2.0 and its Windows voice package are installed and left running. Voice autostart with core is enabled; stop/start ownership has been verified. Working live wake/cue/reply with terminals closed, truthful provider access, final source/installed identity and reproducible regression checks satisfy this stage. Actual login-trigger/clean-VM acceptance and release review remain in their own stages; no claim of merge or publication.
 
-## Verification and handoff
+## Verification
 
-Use disposable profiles for automated lifecycle tests; use the selected default microphone only for authorized live acceptance. Audio remains local until recognized text is submitted to the configured provider; do not record raw audio by default. Next action: implement and install GN-09.01/02, then integrate and validate. Update [pilot](../pilot.md) and move any truly blocked acceptance steps to parked with exact resume conditions.
+- [Windows + Ubuntu CI](https://github.com/parikesitad-pm/timmy/actions/runs/45632110084): both success on 7406534.
+- [Windows executable/installer job](https://github.com/parikesitad-pm/timmy/actions/runs/45632109946): Windows job success on the same revision; macOS job queued for host capacity, so the overall release workflow is not reported green.
+- JS/SDK suite: 444 passing, one existing external macOS bundle skip. Python: 10 passing. The main-provider permission regression tests cover on/off behavior. Native console and installer scenarios remain covered.
+- Actual microphone: 38 frames, peak 2088, zero overflows. Real synthetic engines: STT passes; neural Hey Jarvis score 0.9985 at threshold 0.5; Hi Jarvis fallback and chime -> pause -> command capture through real VAD/STT pass. Raw microphone audio is not saved.
+- Final human acceptance: dap explicitly confirmed chime and spoken reply with terminals closed and no popup. Subsequent service status recorded two wakes and two completed turns, then asleep.
+- SHA-256 comparison confirms the installed executable, runtime.py, audio.py and settings.py match the final artifact/source.
+- One idle sample: about 400.5 MiB voice + 191.5 MiB core and 0.58% normalized CPU. Not a peak or Arch measurement. Voice uses CPU; Codex generation is remote.
 
-## Verification checkpoint - 25 November 2026
+## Decisions from confirmed failures
 
-- Windows package installed in the existing user profile with Python 3.12.16 and uv 0.13.10. System Python 3.15 remains unchanged. CPU/int8 inference is explicit; CUDA is not required.
-- Real microphone probe: 38 frames, peak 2088, zero overflows. Synthetic STT passes; synthetic Hey Jarvis neural score 0.9985 at threshold 0.5. Synthetic Hi Jarvis speech/VAD fallback also passes.
-- Initial live neural-only test failed despite audio reaching the detector (best observed score 0.0006). Added bounded local speech verification for Hey/Hi/Hai/Hello Jarvis, activated only on a completed voiced segment. No threshold reduction or raw-audio recording.
-- Live wake and spoken response then passed. Dap explicitly confirmed hearing the reply. Status for runtime PID 20116 recorded wake_detections=1, completed_turns=1, wake_method=speech, state=asleep. No user transcript is copied into this record.
-- The original Windows system beep was inaudible. Replaced it with a faded two-note PCM chime through normal speaker output. Developer playback/replay completed; human audibility confirmation and final deployment remain pending.
-- Windows venv launcher initially introduced a second PID. The supervisor now launches the actual interpreter with this venv's installed packages, so its PID and authenticated runtime record match.
-- Actual core stop completed graceful voice cleanup; subsequent startup succeeded. Python tests exercise no-audio idle timeout, bounded input backlog, utterance endpointing, speech child cleanup, authenticated HTTP stop/resource release, strict wake matching and chime output. Eight pass.
-- Core/SDK tests: 443 pass plus one existing macOS-only external bundle skip. Build/typecheck/lint and final standalone Node-absent/native-console/installer regressions pass before the last chime packaging update.
+The neural-only live detector missed a phrase despite synthetic success, so a bounded local speech-verification fallback was added rather than lowering the wake threshold. System/PortAudio cues were not audible; SAPI PromptBuilder now plays the WAV cue through the same output path as replies. SDK 0.171.0 spawned a visible console; the tracked pnpm patch adds windowsHide. Loudness-based command capture yielded empty transcription; Silero speech segmentation and explicit spoken retry feedback replace it. Venv launcher/runtime PID mismatch was fixed by launching the actual interpreter with the venv packages. Voice auth is restricted to explicit loopback hosts and valid numeric ports.
 
-Next action: finalize the embedded Python/chime build, verify installed repair/start/stop, run hosted CI on the final revision, and record cue audibility. Vesper remains parked; do not resume it implicitly from this live test.
+## Handoff
 
-## Follow-up corrections before final acceptance
-
-Dap corrected the initial cue confirmation: the system/PortAudio cue remained inaudible. The chime now uses SAPI PromptBuilder audio, the same audible output path as spoken replies; dap confirmed hearing its replay. The SDK opened a CMD window during responses; a tracked pnpm patch to SDK 0.171.0 adds windowsHide to its spawn options. Dap confirmed the subsequent live cue was heard and no CMD appeared, but that attempt produced no answer. Logs showed transcription ended empty before core received a request. Command capture now uses Silero speech segmentation instead of a loudness gate; synthetic chime -> pause -> command capture and actual VAD/STT pass. Empty capture/transcription now produces spoken retry feedback. Nine Python tests pass. Final combined live acceptance remains pending; do not mark the stage done from the earlier partial confirmations.
-
-## Final live acceptance and access verification
-
-Dap's latest explicit confirmation: chime + spoken answer work with terminals closed and no window appearing. This supersedes the preceding partial confirmations/mistaken clicks. SAPI now plays both the synthetic two-note WAV cue and spoken replies. Speech-based endpointing replaces the loudness gate; real-engine post-chime capture passes. SDK 0.171.0's tracked windowsHide patch removes the reply console.
-
-- [x] GN-09.07 - Pass configured bypass_permissions to the main Codex provider, not only askCodex. Tests cover both true and false. Dap authorized full access; the installed profile enables it. Actual native Codex created a uniquely named temporary Desktop marker file outside the project; host verification passed and the probe removed it. Other Desktop files were not inspected. This does not add screen/mouse automation.
-
-Hosted Windows and Ubuntu core/voice tests are green for 6ceffe8; Windows binary/installer job also passes. The final permission-mapping delta remains under GN-09.06 verification. Keep this stage in-progress until that result is recorded.
+[GN-08 Vesper](../parked/gn-08-vesper-identity.md) remains parked until dap explicitly resumes it. [GN-07 release review](gn-07-windows-release.md) retains macOS capacity, optional native model, clean-machine and automatic-review work. [GN-04 actual login](../parked/gn-04-login-acceptance.md) is manual acceptance. Continue from [pilot](../pilot.md), not a new roadmap. No persona-tujuh changes, merge, release tag or publication.

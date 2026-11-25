@@ -1,38 +1,38 @@
-﻿# Windows verification - 25 November 2026
+﻿# Final Windows verification - 25 November 2026
 
-This current record supersedes the historical initial audit below.
+Accepted implementation: 7406534. This summary supersedes the historical audit and incremental checkpoints below.
 
-| Check                                                   | Result                                                                                                                                          |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Toolchain                                               | Windows x64; Node 24.22.3; pnpm 11.6.0; Bun 1.3.9                                                                                               |
-| Frozen install                                          | Pass; final offline frozen-lockfile check also passes                                                                                           |
-| Build / typecheck / lint                                | Pass                                                                                                                                            |
-| Tests                                                   | Core 439 + SDK 4 passed; one existing external macOS bundle skip                                                                                |
-| Final executable                                        | Timmy 0.2.0, approximately 113.4 MiB, matching SHA256SUMS and per-asset checksum                                                                |
-| Node absent from child PATH                             | Pass; node.exe spawn returns ENOENT                                                                                                             |
-| Init / disposable editor / foreground health            | Pass in standalone fixture and actual Codex runs                                                                                                |
-| Actual Codex model response                             | Pass on final 0.2.0 executable using existing native CLI login; synthetic marker prompt only                                                    |
-| Persisted history after restart                         | Pass in fixture and live Codex runs                                                                                                             |
-| Native Windows console                                  | Pass via real ConPTY: Unicode, multiline, response, resize, Escape cancellation, /exit                                                          |
-| Logs / foreground Ctrl+C                                | Pass via real ConPTY; UTF-8 log output and cleanup receipt                                                                                      |
-| Background / repeat start / status / stop / repeat stop | Pass; waits for process exit and successful matching cleanup receipt                                                                            |
-| Stop during active provider stream                      | Pass after scoped AbortController fix; two regression tests cover request abort and stream cancellation                                         |
-| Occupied port / missing exe / readiness failure         | Pass through integration or supervisor tests                                                                                                    |
-| Installer                                               | Pass: install/update with spaces, bad checksum rejection before overwrite, uninstall and data/unrelated-file preservation                       |
-| Native credential store / VS Code shim                  | Earlier actual Windows roundtrip/CLI tests pass; synthetic credential removed                                                                   |
-| Native ONNX                                             | Earlier Node CPU identity-model inference passes; full sentence-model/standalone native loading unverified                                      |
-| Task Scheduler                                          | Earlier current-user Limited/Interactive registration, repeated on/off/status, explicit launch, spaces, health/stop pass; real sign-in untested |
-| Windows voice                                           | Unsupported upstream; explicit failure and core text-chat fallback verified                                                                     |
-| Hosted CI/release matrix                                | Pending remote execution                                                                                                                        |
-| Clean Windows VM                                        | Untested; Node-masked developer-host smoke is narrower                                                                                          |
+| Check                                     | Final result                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Toolchain                                 | Windows x64; Node 24.22.3; pnpm 11.6.0; Bun 1.3.9                                                                                    |
+| Python voice                              | Managed Python 3.12.16; uv 0.13.10; frozen uv.lock; system Python preserved                                                          |
+| Frozen install / build / typecheck / lint | Pass                                                                                                                                 |
+| Tests                                     | Core 440 + SDK 4 + Python 10 pass; one existing external macOS bundle skip                                                           |
+| Hosted matrix                             | Windows and Ubuntu both pass on 7406534; [run 45632110084](https://github.com/parikesitad-pm/timmy/actions/runs/45632110084)         |
+| Windows binary/installer job              | Pass on same revision; [run 45632109946](https://github.com/parikesitad-pm/timmy/actions/runs/45632109946)                           |
+| Release matrix / review gate              | Not fully green; macOS runner capacity and independent review findings remain in GN-07 parked records                                |
+| Standalone                                | Timmy 0.2.0, about 113.5 MiB; checksums generated                                                                                    |
+| Installed identity                        | SHA256 matches exe, runtime.py, audio.py and settings.py against artifact/source                                                     |
+| Node-absent PATH flow                     | Init/editor/health/chat/history/background/stop/busy cancellation/occupied-port pass                                                 |
+| Native ConPTY                             | Unicode, multiline, Escape cancellation, resize, /exit, UTF-8 log follow and Ctrl+C cleanup pass                                     |
+| Installer                                 | Checksum, spaced paths, install/update, bad-checksum rejection, uninstall, profile/unrelated-file preservation pass                  |
+| Native capability checks                  | Credential synthetic roundtrip, actual VS Code CLI, ONNX CPU identity inference and explicit Task Scheduler launch pass              |
+| Voice engines                             | Native mic 38 frames / peak 2088 / zero overflows; synthetic STT, 0.9985 neural wake, Hi Jarvis fallback and post-chime VAD/STT pass |
+| Live voice                                | Dap confirmed chime + spoken answer with CMD/PowerShell closed and no visible window                                                 |
+| Voice lifecycle                           | Core-owned startup; actual interpreter PID readiness; authenticated graceful stop; mic/SAPI cleanup and repeated restart pass        |
+| Codex access                              | Full-access mapping true/false tested; grant applied; native Codex created one temporary Desktop file, host verified and removed it  |
+| UI automation                             | Not installed; Desktop filesystem evidence is not screen/mouse automation                                                            |
+| Resource sample                           | About 400.5 MiB voice + 191.5 MiB core, 0.58% normalized CPU in one idle sample; not peak/Arch evidence                              |
 
-Disposable final fixture evidence: `.timmy-pilot/foreground 1795602007574` (console/full lifecycle) and `.timmy-pilot/foreground 1795602139998` (actual Codex). Values, account credentials and personal chat contents are not recorded here.
+The SDK's tracked one-line windowsHide patch prevents console popups. SAPI plays both the WAV cue and speech through the same audible route. Silero endpointing fixes empty post-chime capture; local speech verification handles Jarvis variants without lowering the neural threshold. Explicit spoken feedback handles empty capture/transcription. Voice auth cannot target a remote HTTP host or a port-based URL redirect; regression tested.
 
-A final console test exposed an HTTP provider request surviving cancellation after logical cleanup. Both HTTP providers now abort requests when their stream scope closes; native executable retesting and two regression cases pass. No tests were newly skipped. The remaining existing skip is [GN-05.07](../parked/gn-05-machine-plugin.md).
-
-Pending acceptance and exact resume conditions are linked from [pilot](../pilot.md). No release was published.
+No raw microphone audio is saved in diagnostics. Recognized text uses normal core chat/history handling. Existing personal profile/history are preserved. No merge, tag or release publication occurred. The installed service is left running. [GN-09](gn-09-windows-handsfree.md), [pilot](../pilot.md), and [GN-07 parked review](../parked/gn-07-review-findings.md) contain the detailed handoff.
 
 ---
+
+## Historical audit and incremental checkpoints
+
+The following material is retained as historical evidence; its pending statuses are superseded by the final summary above.
 
 ## Historical initial audit (before implementation)
 
@@ -78,3 +78,7 @@ Probe hanya membuktikan kemampuan dasar runtime, bukan kompatibilitas Timmy end-
 ## Subsequent live voice implementation
 
 See [GN-09](gn-09-windows-handsfree.md) for implementation and acceptance evidence. Eight Python tests pass alongside 443 JS/SDK tests and the existing external macOS skip. Dap confirmed a live wake/spoken response after a local speech-verified Hey/Hi Jarvis fallback was added. Initial neural-only detection failed on the live microphone despite a passing synthetic wake score; that failure is retained in the stage record. Original system beep was inaudible; replacement PCM chime playback/replay performed, human cue confirmation pending. Final standalone packaging embeds the Python source and frozen uv.lock.
+
+## Final accepted implementation: 7406534
+
+Windows and Ubuntu core/voice CI both pass: run 45632110084. Windows executable/installer job passes: run 45632109946 (macOS remains host-capacity dependent). Current tests: 444 JS/SDK + 10 Python passed, with the single existing macOS bundle skip. Installed SHA256 comparison passes for exe, runtime.py, audio.py and settings.py. Dap's latest explicit live acceptance confirms wake/chime/spoken answer with CMD/PowerShell closed and no window. Full Desktop filesystem access is verified by native Codex creating a single temporary marker, independently read and deleted. No other Desktop files were inspected. See GN-09 for the corrected initial failures and final evidence; GN-07 retains separate review/clean-VM/native-model/macOS acceptance. The service is left running.

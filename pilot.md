@@ -1,6 +1,6 @@
 ﻿# Timmy Windows pilot
 
-Updated: 25 November 2026. Windows x64 core and hands-free voice are installed and running. Current work is final hosted verification and documentation handoff; implementation does not stop at a documentation update.
+Updated: 25 November 2026. Windows x64 core and hands-free voice are installed and running. Final hosted verification and documentation handoff are complete; implementation does not stop at a documentation update.
 
 ## Current result
 
@@ -19,20 +19,20 @@ Updated: 25 November 2026. Windows x64 core and hands-free voice are installed a
 | GN-03 | Logs/editor/image/plugin paths; GN-02             | done                                          | [Portability](plan/gn-03-cli-portability.md)        |
 | GN-04 | Readiness/stop/Scheduler; GN-03                   | in-progress; actual login parked              | [Lifecycle](plan/gn-04-daemon-lifecycle.md)         |
 | GN-05 | Optional integration matrix; GN-04 implementation | in-progress; remaining optional checks parked | [Integrations](plan/gn-05-optional-integrations.md) |
-| GN-06 | Windows/Ubuntu CI; GN-05 matrix                   | in-progress; latest permission delta pending  | [CI](plan/gn-06-windows-ci.md)                      |
+| GN-06 | Windows/Ubuntu CI; GN-05 matrix                   | done                                          | [CI](plan/gn-06-windows-ci.md)                      |
 | GN-07 | Binary/checksums/installer; GN-06                 | in-progress; remaining acceptance parked      | [Release](plan/gn-07-windows-release.md)            |
 | GN-08 | Vesper identity/custom wake; Windows handoff      | planned, parked by dap                        | [Vesper](parked/gn-08-vesper-identity.md)           |
-| GN-09 | Windows hands-free Jarvis; working core           | in-progress; final hosted checks only         | [Voice](plan/gn-09-windows-handsfree.md)            |
+| GN-09 | Windows hands-free Jarvis; working core           | done                                          | [Voice](plan/gn-09-windows-handsfree.md)            |
 
-Active: GN-09.06. Next: verify hosted Windows/Ubuntu checks for the final implementation revision, synchronize done statuses and leave the installed service running. Do not resume Vesper automatically.
+GN-09 is done and the installed service is left running. No active implementation remains for the accepted Windows/Jarvis objective. Next: independent parked release/manual acceptance when its resume conditions are met. Do not resume Vesper automatically.
 
 ## Verification
 
 - Windows x64; Node 24.22.3, pnpm 11.6.0, Bun 1.3.9. Managed Python 3.12.16 and uv 0.13.10 for voice; system Node/Python unchanged. Python dependencies are frozen in the package's uv.lock.
-- Build/typecheck/lint pass. Full suite before the last permission-mapping test: core 439 + SDK 4 pass, one existing macOS external-bundle skip. New provider permission tests: 10 pass across mapping/provider files. Nine Python audio/endpointing/control/cleanup tests pass.
+- Build/typecheck/lint pass. Final hosted suite: core 440 + SDK 4 and 10 Python tests pass; one existing external macOS bundle skip remains.
 - Synthetic real-engine checks pass: STT, neural Hey Jarvis score 0.9985 at threshold 0.5, Hi Jarvis speech fallback, and chime -> pause -> speech capture through VAD/STT. Real mic: 38 frames, peak 2088, zero overflows. Synthetic evidence is distinct from dap's final live confirmation.
 - Final Windows executable is about 113.5 MiB. Node-absent PATH checks pass for init/editor/foreground/chat/history/background/repeated-start/stop/busy cancellation/occupied-port and actual ConPTY TUI, UTF-8 logs, resize and Ctrl+C. Installer checksum/update/mismatch/uninstall/profile-preservation checks pass.
-- Hosted core CI is green on both Windows and Ubuntu for 6ceffe8: [run 45617671911](https://github.com/parikesitad-pm/timmy/actions/runs/45617671911). Windows standalone/installer artifact job also passed at that revision: [run 45617671807](https://github.com/parikesitad-pm/timmy/actions/runs/45617671807). macOS artifact runner remains queued; final permission-mapping delta is being verified next.
+- Hosted Windows and Ubuntu CI are green on 7406534: [run 45632110084](https://github.com/parikesitad-pm/timmy/actions/runs/45632110084). The [Windows executable/installer job](https://github.com/parikesitad-pm/timmy/actions/runs/45632109946) also passes at that revision; macOS remains queued for host capacity.
 - Earlier actual native credential roundtrip, official ONNX CPU identity inference, VS Code native CLI and Limited/Interactive Task Scheduler registration/explicit launch/removal pass. No credential values were printed.
 - One idle sample with voice after acceptance: about 400.5 MiB voice + 191.5 MiB core, normalized CPU about 0.58%. This is not a transcription peak or an Arch measurement. Voice inference uses CPU; Codex generation is remote.
 
@@ -49,3 +49,9 @@ Active: GN-09.06. Next: verify hosted Windows/Ubuntu checks for the final implem
 ## Review and handoff
 
 [Draft PR #1](https://github.com/parikesitad-pm/timmy/pull/1), branch codex/windows-codex-sdk. No merge, release tag or publication has occurred. Artifacts are in ignored release/. [Validation](plan/validation.md), [Windows guide](docs/WINDOWS.md), [runbook](plan/windows-runbook.md). Global workflow preferences remain in global instructions; this project's progress stays here. persona-tujuh was not edited.
+
+## Final handoff
+
+Implementation 7406534: [Windows/Ubuntu CI](https://github.com/parikesitad-pm/timmy/actions/runs/45632110084) both pass; [Windows standalone/installer job](https://github.com/parikesitad-pm/timmy/actions/runs/45632109946) passes. 444 JS/SDK tests plus 10 Python tests pass; one pre-existing macOS external-bundle skip remains. Installed executable/runtime/audio/settings hashes match final source/artifact. Core and voice are running; live chime + answer with terminals closed/no popup is explicitly confirmed. Full filesystem access is enabled and actual Desktop file creation/verification/cleanup passed. Screen/mouse automation is not added.
+
+Additional release records: [GN-07.07 macOS artifact](parked/gn-07-macos-artifact.md) is blocked on GitHub arm64 runner capacity; next action is a rerun when available. [GN-07.06 automatic review](parked/gn-07-review-findings.md) remains open: duplication gate/review findings must be resolved before treating the draft PR as merge-ready. The actionable non-loopback voice HTTP path is fixed and tested; post-fix SonarCloud still reports 3.3% duplication/C security rating and remains open for exact finding review. No scanner gate was weakened. The overall release matrix is not reported green, and no merge/tag/publication was performed.

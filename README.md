@@ -77,7 +77,7 @@ packages/
   core/    timmy-core — the daemon (HTTP/WS server, LLM providers, tool registry, persistence) + CLI
 ```
 
-Voice ships as a separate Python daemon ([`timmy-voice`](https://github.com/omatsetyadi/timmy-voice) — STT/TTS/wake-word) that `timmy voice install` sets up and core supervises; it talks to core over the same `/stream` contract. Still planned: `timmy-dashboard` (Electron) + the workflow platform. See `docs/DEVELOPMENT_PLAN.md` for the roadmap.
+Voice runs as a Python daemon supervised by core. Windows uses this repository's [hands-free voice package](packages/modules/voice/README.md): Hey/Hi Jarvis, CPU speech recognition and native SAPI cue/replies over core's voice-channel API. macOS uses the separate upstream [`timmy-voice`](https://github.com/omatsetyadi/timmy-voice) backend. Still planned: `timmy-dashboard` (Electron) + the workflow platform.
 
 ## Develop
 
