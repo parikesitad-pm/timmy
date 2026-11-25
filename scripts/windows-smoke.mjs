@@ -137,7 +137,7 @@ async function consoleCheck(mode, args) {
   const child = spawn(
     python,
     [consoleScript, '--mode', mode, '--', executable, ...prefix, ...args],
-    { env, windowsHide: true },
+    { env: { ...env, CI: 'false', CONTINUOUS_INTEGRATION: 'false' }, windowsHide: true },
   )
   let output = ''
   for (const stream of [child.stdout, child.stderr])
